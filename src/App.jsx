@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, Compass, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, Compass, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart } from 'lucide-react'
 import './App.css'
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
@@ -74,11 +74,23 @@ export default function App() {
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false)
   const [showLyrics, setShowLyrics] = useState(false)
 
-  const [playlists, setPlaylists] = useState([])
+  const [playlists, setPlaylists] = useState(() => {
+    const saved = localStorage.getItem('dhun_playlists')
+    return saved ? JSON.parse(saved) : []
+  })
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null)
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
-  const [showAddToPlaylist, setShowAddToPlaylist] = useState(false)
+
+  const [recentlyPlayed, setRecentlyPlayed] = useState(() => {
+    const saved = localStorage.getItem('dhun_recent')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [likedSongs, setLikedSongs] = useState(() => {
+    const saved = localStorage.getItem('dhun_liked')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [addToPlaylistTarget, setAddToPlaylistTarget] = useState(null)
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -87,10 +99,25 @@ export default function App() {
   const prevTabRef = useRef('welcome')
   const playerRef = useRef(null)
 
+  const longPressTimer = useRef(null)
+  const isLongPress = useRef(false)
+
   setPlayerError = (msg) => {
     setPlayerErrorState(msg)
     if (msg) setTimeout(() => setPlayerErrorState(null), 5000)
   }
+
+  useEffect(() => {
+    localStorage.setItem('dhun_playlists', JSON.stringify(playlists))
+  }, [playlists])
+
+  useEffect(() => {
+    localStorage.setItem('dhun_recent', JSON.stringify(recentlyPlayed))
+  }, [recentlyPlayed])
+
+  useEffect(() => {
+    localStorage.setItem('dhun_liked', JSON.stringify(likedSongs))
+  }, [likedSongs])
 
   useEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -248,6 +275,44 @@ export default function App() {
     navigateTo(prevTabRef.current)
   }
 
+  const toggleLike = (song) => {
+    if (!song) return
+    setLikedSongs(prev => {
+      const exists = prev.some(s => s.id === song.id)
+      if (exists) return prev.filter(s => s.id !== song.id)
+      return [song, ...prev]
+    })
+  }
+
+  const addToRecent = (song) => {
+    setRecentlyPlayed(prev => {
+      const filtered = prev.filter(s => s.id !== song.id)
+      return [song, ...filtered].slice(0, 20)
+    })
+  }
+
+  const handlePointerDown = (song) => {
+    isLongPress.current = false
+    longPressTimer.current = setTimeout(() => {
+      isLongPress.current = true
+      setAddToPlaylistTarget(song)
+    }, 500)
+  }
+
+  const handlePointerUp = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
+
+  const handlePointerLeave = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
+
   const fetchTrendingSongs = async () => {
     if (trendingFetched.current || !YOUTUBE_API_KEY) return
     setIsLoadingTrending(true)
@@ -325,6 +390,11 @@ export default function App() {
   }
 
   const playSong = (track) => {
+    if (isLongPress.current) {
+      isLongPress.current = false
+      return
+    }
+    addToRecent(track)
     setQueue([track])
     setCurrentTrackIndex(0)
     navigateTo('player')
@@ -358,13 +428,15 @@ export default function App() {
     if (selectedPlaylistId === id) setSelectedPlaylistId(null)
   }
 
-  const addCurrentSongToPlaylist = (playlistId) => {
-    if (!currentTrack) return
+  const addSongToPlaylist = (playlistId) => {
+    const target = addToPlaylistTarget
+    if (!target) return
     setPlaylists(playlists.map(p => {
       if (p.id !== playlistId) return p
-      if (p.songs.some(s => s.id === currentTrack.id)) return p
-      return { ...p, songs: [...p.songs, currentTrack] }
+      if (p.songs.some(s => s.id === target.id)) return p
+      return { ...p, songs: [...p.songs, target] }
     }))
+    setAddToPlaylistTarget(null)
   }
 
   const removeSongFromPlaylist = (playlistId, songId) => {
@@ -375,6 +447,7 @@ export default function App() {
   }
 
   const playPlaylistSong = (song, playlist) => {
+    addToRecent(song)
     setQueue(playlist.songs)
     const idx = playlist.songs.findIndex(s => s.id === song.id)
     setCurrentTrackIndex(idx)
@@ -384,6 +457,7 @@ export default function App() {
 
   const playPlaylist = (playlist) => {
     if (playlist.songs.length === 0) return
+    addToRecent(playlist.songs[0])
     setQueue(playlist.songs)
     setCurrentTrackIndex(0)
     navigateTo('player')
@@ -392,6 +466,8 @@ export default function App() {
 
   const currentTrack = queue[currentTrackIndex] || null
   const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistId) || null
+
+  const isLiked = (song) => song && likedSongs.some(s => s.id === song.id)
 
   return (
     <div className={`app-root${isDarkMode ? ' dark' : ''}`}>
@@ -428,6 +504,29 @@ export default function App() {
                   My Playlists
                 </button>
               </div>
+
+              {recentlyPlayed.length > 0 && (
+                <div className="recent-section">
+                  <h3 className="recent-title">Recently Played</h3>
+                  <div className="recent-list">
+                    {recentlyPlayed.map(song => (
+                      <div key={song.id} className="recent-item" onClick={() => playSong(song)}>
+                        <img src={song.thumbnail} alt="" className="recent-thumb" />
+                        <div className="recent-info">
+                          <p className="recent-song-title">{song.title}</p>
+                          <p className="recent-song-artist">{song.artist}</p>
+                        </div>
+                        <button
+                          className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                        >
+                          <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -483,11 +582,18 @@ export default function App() {
                   </div>
 
                   <div className="player-actions-row">
+                    <button
+                      onClick={() => toggleLike(currentTrack)}
+                      className={`player-action-btn${isLiked(currentTrack) ? ' liked-btn' : ''}`}
+                    >
+                      <Heart size={18} fill={isLiked(currentTrack) ? 'currentColor' : 'none'} />
+                      {isLiked(currentTrack) ? 'Liked' : 'Like'}
+                    </button>
                     <button onClick={toggleLyrics} className="player-action-btn">
                       <Mic2 size={18} />
                       {showLyrics ? 'Hide Lyrics' : 'Lyrics'}
                     </button>
-                    <button onClick={() => setShowAddToPlaylist(true)} className="player-action-btn">
+                    <button onClick={() => setAddToPlaylistTarget(currentTrack)} className="player-action-btn">
                       <Plus size={18} />
                       Add to Playlist
                     </button>
@@ -509,7 +615,49 @@ export default function App() {
 
           {activeTab === 'playlists' && (
             <div className="playlists-view">
-              {selectedPlaylist ? (
+              {selectedPlaylistId === 'liked' ? (
+                <>
+                  <div className="playlist-header-row">
+                    <button onClick={() => setSelectedPlaylistId(null)} className="playlist-back-btn">
+                      <ArrowLeft size={20} />
+                    </button>
+                    <div className="playlist-header-info">
+                      <h2 className="playlist-name">Liked Songs</h2>
+                      <p className="playlist-count">{likedSongs.length} songs</p>
+                    </div>
+                    {likedSongs.length > 0 && (
+                      <button onClick={() => { setQueue(likedSongs); setCurrentTrackIndex(0); navigateTo('player'); actuallyPlay(likedSongs[0]) }} className="playlist-play-all-btn">
+                        <PlayIcon size={20} />
+                      </button>
+                    )}
+                  </div>
+
+                  {likedSongs.length === 0 ? (
+                    <p className="playlist-empty">No liked songs yet. Tap the heart to like!</p>
+                  ) : (
+                    <div className="playlist-songs">
+                      {likedSongs.map(song => (
+                        <div key={song.id}
+                          className="playlist-song-item"
+                          onClick={() => { addToRecent(song); setQueue(likedSongs); const idx = likedSongs.findIndex(s => s.id === song.id); setCurrentTrackIndex(idx); navigateTo('player'); actuallyPlay(song) }}
+                          onPointerDown={() => handlePointerDown(song)}
+                          onPointerUp={handlePointerUp}
+                          onPointerLeave={handlePointerLeave}
+                        >
+                          <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
+                          <div className="playlist-song-info">
+                            <p className="playlist-song-title">{song.title}</p>
+                            <p className="playlist-song-artist">{song.artist}</p>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); toggleLike(song) }} className="playlist-song-remove">
+                            <Heart size={16} fill="currentColor" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : selectedPlaylist ? (
                 <>
                   <div className="playlist-header-row">
                     <button onClick={() => setSelectedPlaylistId(null)} className="playlist-back-btn">
@@ -531,7 +679,13 @@ export default function App() {
                   ) : (
                     <div className="playlist-songs">
                       {selectedPlaylist.songs.map(song => (
-                        <div key={song.id} className="playlist-song-item" onClick={() => playPlaylistSong(song, selectedPlaylist)}>
+                        <div key={song.id}
+                          className="playlist-song-item"
+                          onClick={() => playPlaylistSong(song, selectedPlaylist)}
+                          onPointerDown={() => handlePointerDown(song)}
+                          onPointerUp={handlePointerUp}
+                          onPointerLeave={handlePointerLeave}
+                        >
                           <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
                           <div className="playlist-song-info">
                             <p className="playlist-song-title">{song.title}</p>
@@ -569,6 +723,20 @@ export default function App() {
                       <button type="button" onClick={() => setIsCreatingPlaylist(false)} className="create-playlist-cancel"><ChevronLeft size={18} /></button>
                     </form>
                   )}
+
+                  {likedSongs.length > 0 && (
+                    <div className="playlist-card liked-songs-card" onClick={() => setSelectedPlaylistId('liked')}>
+                      <div className="playlist-card-cover liked-cover">
+                        <Heart size={24} fill="currentColor" />
+                      </div>
+                      <div className="playlist-card-info">
+                        <h3 className="playlist-card-name">Liked Songs</h3>
+                        <p className="playlist-card-count">{likedSongs.length} songs</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="playlists-divider" />
 
                   {playlists.length === 0 ? (
                     <div className="playlists-empty">
@@ -624,12 +792,26 @@ export default function App() {
                   ) : trendingSongs.length > 0 ? (
                     <div className="explore-grid">
                       {trendingSongs.map(song => (
-                        <div key={song.id} className="explore-card" onClick={() => playSong(song)}>
+                        <div key={song.id}
+                          className="explore-card"
+                          onClick={() => playSong(song)}
+                          onPointerDown={() => handlePointerDown(song)}
+                          onPointerUp={handlePointerUp}
+                          onPointerLeave={handlePointerLeave}
+                        >
                           <div className="explore-card-img">
                             <img src={song.thumbnail} alt={song.title} />
                           </div>
                           <div className="explore-card-info">
-                            <p className="explore-card-title">{song.title}</p>
+                            <div className="explore-card-title-row">
+                              <p className="explore-card-title">{song.title}</p>
+                              <button
+                                className={`explore-like-btn${isLiked(song) ? ' liked' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                              >
+                                <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                              </button>
+                            </div>
                             <p className="explore-card-artist">{song.artist}</p>
                           </div>
                         </div>
@@ -653,12 +835,26 @@ export default function App() {
                   ) : searchResults.length > 0 ? (
                     <div className="explore-grid">
                       {searchResults.map(result => (
-                        <div key={result.id} className="explore-card" onClick={() => playSong(result)}>
+                        <div key={result.id}
+                          className="explore-card"
+                          onClick={() => playSong(result)}
+                          onPointerDown={() => handlePointerDown(result)}
+                          onPointerUp={handlePointerUp}
+                          onPointerLeave={handlePointerLeave}
+                        >
                           <div className="explore-card-img">
                             <img src={result.thumbnail} alt={result.title} />
                           </div>
                           <div className="explore-card-info">
-                            <p className="explore-card-title">{result.title}</p>
+                            <div className="explore-card-title-row">
+                              <p className="explore-card-title">{result.title}</p>
+                              <button
+                                className={`explore-like-btn${isLiked(result) ? ' liked' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); toggleLike(result) }}
+                              >
+                                <Heart size={14} fill={isLiked(result) ? 'currentColor' : 'none'} />
+                              </button>
+                            </div>
                             <p className="explore-card-artist">{result.artist}</p>
                           </div>
                         </div>
@@ -672,8 +868,8 @@ export default function App() {
             </div>
           )}
 
-          {showAddToPlaylist && (
-            <div className="modal-overlay" onClick={() => setShowAddToPlaylist(false)}>
+          {addToPlaylistTarget && (
+            <div className="modal-overlay" onClick={() => setAddToPlaylistTarget(null)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <h3>Add to Playlist</h3>
                 {playlists.length === 0 ? (
@@ -681,7 +877,7 @@ export default function App() {
                 ) : (
                   <div className="modal-playlist-list">
                     {playlists.map(p => (
-                      <button key={p.id} className="modal-playlist-item" onClick={() => { addCurrentSongToPlaylist(p.id); setShowAddToPlaylist(false) }}>
+                      <button key={p.id} className="modal-playlist-item" onClick={() => addSongToPlaylist(p.id)}>
                         <Library size={20} />
                         <span>{p.name}</span>
                         <span className="modal-song-count">{p.songs.length} songs</span>
@@ -689,7 +885,7 @@ export default function App() {
                     ))}
                   </div>
                 )}
-                <button onClick={() => setShowAddToPlaylist(false)} className="modal-close-btn">Cancel</button>
+                <button onClick={() => setAddToPlaylistTarget(null)} className="modal-close-btn">Cancel</button>
               </div>
             </div>
           )}

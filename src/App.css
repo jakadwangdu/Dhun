@@ -2,7 +2,7 @@
   min-height: 100vh;
   background: #f4f4f5;
   color: #18181b;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   transition: background 0.5s, color 0.5s;
 }
 .app-root.dark {
@@ -995,6 +995,144 @@
   height: 4px;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* ---- Liked Songs Card ---- */
+.liked-songs-card {
+  border-color: #f43f5e;
+}
+.dark .liked-songs-card {
+  border-color: #f43f5e;
+}
+.liked-cover {
+  background: #f43f5e !important;
+  color: #fff !important;
+}
+
+/* ---- Playlists Divider ---- */
+.playlists-divider {
+  height: 1px;
+  background: #e4e4e7;
+  margin: 16px 0;
+}
+.dark .playlists-divider {
+  background: #27272a;
+}
+
+/* ---- Recently Played (Welcome) ---- */
+.recent-section {
+  width: 100%;
+  margin-top: 32px;
+  animation: fadeIn 0.5s;
+}
+.recent-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  letter-spacing: -0.02em;
+}
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.recent-item:hover {
+  background: #f4f4f5;
+}
+.dark .recent-item:hover {
+  background: #18181b;
+}
+.recent-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.recent-info {
+  flex: 1;
+  min-width: 0;
+}
+.recent-song-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 1px;
+}
+.recent-song-artist {
+  font-size: 11px;
+  color: #71717a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dark .recent-song-artist { color: #a1a1aa; }
+
+/* ---- Like Button Small (recent items) ---- */
+.like-btn-sm {
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  transition: all 0.2s;
+  display: flex;
+  flex-shrink: 0;
+}
+.like-btn-sm:hover {
+  color: #f43f5e;
+  background: rgba(244,63,94,0.1);
+}
+.like-btn-sm.liked {
+  color: #f43f5e;
+}
+
+/* ---- Explore Card Title Row ---- */
+.explore-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.explore-card-title-row .explore-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- Explore Like Button ---- */
+.explore-like-btn {
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.2s;
+  display: flex;
+  flex-shrink: 0;
+}
+.explore-like-btn:hover {
+  color: #f43f5e;
+}
+.explore-like-btn.liked {
+  color: #f43f5e;
+}
+
+/* ---- Player Liked Button ---- */
+.liked-btn {
+  border-color: #f43f5e !important;
+  color: #f43f5e !important;
 }
 
 @keyframes fadeIn {
