@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, Compass, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Download, Upload, FolderClosed } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart } from 'lucide-react'
 import './App.css'
-import { getAllDownloads, saveDownload, deleteDownload, captureYouTubeAudio, readFileAsBlob, getVideoDuration, timestamp } from './downloads.js'
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
 
@@ -92,10 +91,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : []
   })
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState(null)
-  const [downloads, setDownloads] = useState([])
-  const [isCapturing, setIsCapturing] = useState(false)
-  const [currentDownloadId, setCurrentDownloadId] = useState(null)
-  const [isDownloadPlaying, setIsDownloadPlaying] = useState(false)
+  const [ambientColors, setAmbientColors] = useState([])
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -106,7 +102,6 @@ export default function App() {
 
   const longPressTimer = useRef(null)
   const isLongPress = useRef(false)
-  const downloadPlayerRef = useRef(null)
 
   setPlayerError = (msg) => {
     setPlayerErrorState(msg)
@@ -128,31 +123,6 @@ export default function App() {
   useEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       setIsDarkMode(true)
-    }
-  }, [])
-
-  useEffect(() => {
-    getAllDownloads().then(items => setDownloads(items)).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    const v = downloadPlayerRef.current
-    if (!v) return
-    const onEnded = () => {
-      setCurrentDownloadId(null)
-      setIsDownloadPlaying(false)
-      if (v.src && v.src.startsWith('blob:')) URL.revokeObjectURL(v.src)
-      v.src = ''
-    }
-    const onPlay = () => setIsDownloadPlaying(true)
-    const onPause = () => setIsDownloadPlaying(false)
-    v.addEventListener('ended', onEnded)
-    v.addEventListener('play', onPlay)
-    v.addEventListener('pause', onPause)
-    return () => {
-      v.removeEventListener('ended', onEnded)
-      v.removeEventListener('play', onPlay)
-      v.removeEventListener('pause', onPause)
     }
   }, [])
 
@@ -500,116 +470,55 @@ export default function App() {
 
   const isLiked = (song) => song && likedSongs.some(s => s.id === song.id)
 
-  const handleExtractAudio = async () => {
-    if (!currentTrack || isCapturing) return
-    setIsCapturing(true)
-    setErrorMsg('Share your screen — select this tab and enable "Share audio".')
-    const now = timestamp()
+  const extractAmbientColors = useCallback(async (imageUrl) => {
+    if (!imageUrl) return
     try {
-      if (playerRef.current) playerRef.current.pauseVideo()
-      const blob = await captureYouTubeAudio()
-      const folder = 'youtube_' + currentTrack.id
-      const entry = {
-        id: 'dl_' + now,
-        source: 'youtube',
-        videoId: currentTrack.id,
-        folder,
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        thumbnail: currentTrack.thumbnail || '',
-        audioBlob: blob,
-        blobType: blob.type,
-        duration: 0,
-        createdAt: now
+      const img = new Image()
+      img.crossOrigin = 'Anonymous'
+      await new Promise((resolve, reject) => {
+        img.onload = resolve
+        img.onerror = reject
+        img.src = imageUrl
+      })
+      const canvas = document.createElement('canvas')
+      canvas.width = 8
+      canvas.height = 8
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(img, 0, 0, 8, 8)
+      const { data } = ctx.getImageData(0, 0, 8, 8)
+      const colorMap = {}
+      for (let i = 0; i < data.length; i += 4) {
+        const r = Math.round(data[i] / 32) * 32
+        const g = Math.round(data[i + 1] / 32) * 32
+        const b = Math.round(data[i + 2] / 32) * 32
+        const a = data[i + 3]
+        if (a < 128) continue
+        const key = `${r},${g},${b}`
+        colorMap[key] = (colorMap[key] || 0) + 1
       }
-      await saveDownload(entry)
-      const items = await getAllDownloads()
-      setDownloads(items)
-      setErrorMsg('Audio extracted and saved to Downloads!')
-      setTimeout(() => setErrorMsg(null), 3000)
-    } catch (err) {
-      if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
-        setErrorMsg(`Failed: ${err.message}`)
-        setTimeout(() => setErrorMsg(null), 5000)
-      }
-    } finally {
-      setIsCapturing(false)
+      const sorted = Object.entries(colorMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([key]) => `rgb(${key})`)
+      setAmbientColors(sorted)
+    } catch {
+      setAmbientColors([])
     }
-  }
+  }, [])
 
-  const handleDownloadFile = async (e) => {
-    const now = timestamp()
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      const blob = await readFileAsBlob(file)
-      const duration = await getVideoDuration(file)
-      const folder = 'instagram_' + file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_')
-      const entry = {
-        id: 'dl_' + now,
-        source: 'instagram',
-        videoId: folder,
-        folder,
-        title: file.name,
-        artist: 'Instagram',
-        thumbnail: '',
-        audioBlob: blob,
-        blobType: blob.type,
-        duration: Math.round(duration),
-        createdAt: now
-      }
-      await saveDownload(entry)
-      const items = await getAllDownloads()
-      setDownloads(items)
-      setErrorMsg('File imported successfully!')
-      setTimeout(() => setErrorMsg(null), 3000)
-    } catch (err) {
-      setErrorMsg(`Import failed: ${err.message}`)
-      setTimeout(() => setErrorMsg(null), 5000)
+  useEffect(() => {
+    if (currentTrack?.thumbnail) {
+      extractAmbientColors(currentTrack.thumbnail)
+    } else {
+      setAmbientColors([])
     }
-    e.target.value = ''
-  }
-
-  const handlePlayDownload = (item) => {
-    if (currentDownloadId === item.id && downloadPlayerRef.current) {
-      if (downloadPlayerRef.current.paused) {
-        downloadPlayerRef.current.play()
-      } else {
-        downloadPlayerRef.current.pause()
-      }
-      return
-    }
-    if (playerRef.current) playerRef.current.pauseVideo()
-    if (downloadPlayerRef.current) {
-      if (downloadPlayerRef.current.src && downloadPlayerRef.current.src.startsWith('blob:')) {
-        URL.revokeObjectURL(downloadPlayerRef.current.src)
-      }
-      const url = URL.createObjectURL(item.audioBlob)
-      downloadPlayerRef.current.src = url
-      downloadPlayerRef.current.play()
-      setCurrentDownloadId(item.id)
-    }
-  }
-
-  const handleDeleteDownload = async (id) => {
-    if (currentDownloadId === id && downloadPlayerRef.current) {
-      downloadPlayerRef.current.pause()
-      if (downloadPlayerRef.current.src && downloadPlayerRef.current.src.startsWith('blob:')) {
-        URL.revokeObjectURL(downloadPlayerRef.current.src)
-      }
-      downloadPlayerRef.current.src = ''
-      setCurrentDownloadId(null)
-      setIsDownloadPlaying(false)
-    }
-    await deleteDownload(id)
-    setDownloads(prev => prev.filter(d => d.id !== id))
-  }
+  }, [currentTrack, extractAmbientColors])
 
   return (
     <div className={`app-root${isDarkMode ? ' dark' : ''}`}>
       <div className="app-shell">
         <div className="youtube-player-wrapper"><div id="youtube-player-container"></div></div>
-        <audio ref={downloadPlayerRef} style={{ display: 'none' }} />
 
         <header className="app-header">
           <button onClick={handleHeaderBack} className="icon-btn back-btn">
@@ -668,7 +577,12 @@ export default function App() {
           )}
 
           {activeTab === 'player' && (
-            <div className="player-view">
+            <div
+              className={`player-view${ambientColors.length ? ' has-ambient' : ''}`}
+              style={ambientColors.length ? {
+                background: `radial-gradient(ellipse 120% 80% at 50% -10%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 40%, transparent 75%)`
+              } : {}}
+            >
               <div className="track-info">
                 {currentTrack ? (
                   <>
@@ -733,10 +647,6 @@ export default function App() {
                     <button onClick={() => setAddToPlaylistTarget(currentTrack)} className="player-action-btn">
                       <Plus size={18} />
                       Add to Playlist
-                    </button>
-                    <button onClick={handleExtractAudio} className="player-action-btn" disabled={isCapturing}>
-                      <Download size={18} />
-                      {isCapturing ? 'Recording...' : 'Extract'}
                     </button>
                   </div>
 
@@ -1009,92 +919,6 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'downloads' && (
-            <div className="downloads-view">
-              <div className="downloads-header">
-                <h2 className="downloads-title">Downloads</h2>
-              </div>
-
-              <div className="downloads-section">
-                <h3 className="downloads-section-title">Record from YouTube</h3>
-                <p className="downloads-section-desc">Play a video in the player, then tap Extract to capture its audio.</p>
-                <button
-                  onClick={handleExtractAudio}
-                  className="downloads-extract-btn"
-                  disabled={isCapturing || !currentTrack}
-                >
-                  <Download size={18} />
-                  {isCapturing ? 'Recording... (share your tab)' : 'Extract Audio from Player'}
-                </button>
-              </div>
-
-              <div className="downloads-section">
-                <h3 className="downloads-section-title">Import Instagram Reel</h3>
-                <p className="downloads-section-desc">Download a reel from Instagram, then upload the video file here.</p>
-                <label className="downloads-upload-label">
-                  <Upload size={18} />
-                  Choose Video File
-                  <input
-                    type="file"
-                    accept="video/mp4,video/mov,video/avi,video/webm"
-                    onChange={handleDownloadFile}
-                    className="downloads-upload-input"
-                  />
-                </label>
-              </div>
-
-              <div className="downloads-divider" />
-
-              {downloads.length === 0 ? (
-                <div className="downloads-empty">
-                  <FolderClosed size={48} />
-                  <p>No downloads yet</p>
-                  <span>Extract audio from YouTube or upload an Instagram reel</span>
-                </div>
-              ) : (
-                <div className="downloads-list">
-                  {Object.values(downloads.reduce((acc, item) => {
-                    if (!acc[item.folder]) acc[item.folder] = { folder: item.folder, items: [] }
-                    acc[item.folder].items.push(item)
-                    return acc
-                  }, {})).sort((a, b) => b.items[0].createdAt - a.items[0].createdAt).map(group => (
-                    <div key={group.folder} className="downloads-folder-group">
-                      <div className="downloads-folder-header">
-                        <FolderClosed size={16} />
-                        <span className="downloads-folder-name">{group.folder}</span>
-                        <span className="downloads-folder-count">{group.items.length} file{group.items.length > 1 ? 's' : ''}</span>
-                      </div>
-                      {group.items.map(item => (
-                        <div key={item.id} className="downloads-item">
-                          {item.thumbnail ? (
-                            <img src={item.thumbnail} alt="" className="downloads-item-thumb" />
-                          ) : (
-                            <div className="downloads-item-thumb-placeholder">
-                              <Music2 size={18} />
-                            </div>
-                          )}
-                          <div className="downloads-item-info">
-                            <p className="downloads-item-title">{item.title}</p>
-                            <p className="downloads-item-artist">{item.artist} · {new Date(item.createdAt).toLocaleDateString()}</p>
-                          </div>
-                          <button
-                            onClick={() => handlePlayDownload(item)}
-                            className={`downloads-item-play${currentDownloadId === item.id && isDownloadPlaying ? ' playing' : ''}`}
-                          >
-                            {currentDownloadId === item.id && isDownloadPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-                          </button>
-                          <button onClick={() => handleDeleteDownload(item.id)} className="downloads-item-delete">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {addToPlaylistTarget && (
             <div className="modal-overlay" onClick={() => setAddToPlaylistTarget(null)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -1123,17 +947,14 @@ export default function App() {
             <button onClick={() => navigateTo('welcome')} className={`nav-btn${activeTab === 'welcome' ? ' active' : ''}`}>
               <House size={24} />
             </button>
+            <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className={`nav-btn${activeTab === 'explore' ? ' active' : ''}`}>
+              <img src="/explore-icon.png" alt="Explore" className="nav-icon-img" />
+            </button>
             <button onClick={() => navigateTo('player')} className={`nav-btn${activeTab === 'player' ? ' active' : ''}`}>
               <Music2 size={24} />
             </button>
             <button onClick={() => navigateTo('playlists')} className={`nav-btn${activeTab === 'playlists' ? ' active' : ''}`}>
               <ListMusic size={24} />
-            </button>
-            <button onClick={() => navigateTo('downloads')} className={`nav-btn${activeTab === 'downloads' ? ' active' : ''}`}>
-              <Download size={24} />
-            </button>
-            <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className={`nav-btn${activeTab === 'explore' ? ' active' : ''}`}>
-              <Compass size={24} />
             </button>
           </div>
         </nav>
