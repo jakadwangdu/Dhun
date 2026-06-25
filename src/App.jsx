@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2 } from 'lucide-react'
 import './App.css'
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
@@ -92,6 +92,7 @@ export default function App() {
   })
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState(null)
   const [ambientColors, setAmbientColors] = useState([])
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -107,6 +108,22 @@ export default function App() {
     setPlayerErrorState(msg)
     if (msg) setTimeout(() => setPlayerErrorState(null), 5000)
   }
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('dhun_playlists', JSON.stringify(playlists))
@@ -470,6 +487,17 @@ export default function App() {
 
   const isLiked = (song) => song && likedSongs.some(s => s.id === song.id)
 
+  const makeSoothing = (r, g, b) => {
+    const gray = r * 0.299 + g * 0.587 + b * 0.114
+    const dr = Math.round(r + (gray - r) * 0.6)
+    const dg = Math.round(g + (gray - g) * 0.6)
+    const db = Math.round(b + (gray - b) * 0.6)
+    const lr = Math.round(dr + (255 - dr) * 0.35)
+    const lg = Math.round(dg + (255 - dg) * 0.35)
+    const lb = Math.round(db + (255 - db) * 0.35)
+    return `rgb(${lr},${lg},${lb})`
+  }
+
   const extractAmbientColors = useCallback(async (imageUrl) => {
     if (!imageUrl) return
     try {
@@ -500,7 +528,10 @@ export default function App() {
       const sorted = Object.entries(colorMap)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([key]) => `rgb(${key})`)
+        .map(([key]) => {
+          const [r, g, b] = key.split(',').map(Number)
+          return makeSoothing(r, g, b)
+        })
       setAmbientColors(sorted)
     } catch {
       setAmbientColors([])
@@ -516,7 +547,12 @@ export default function App() {
   }, [currentTrack, extractAmbientColors])
 
   return (
-    <div className={`app-root${isDarkMode ? ' dark' : ''}`}>
+    <div
+      className={`app-root${isDarkMode ? ' dark' : ''}${ambientColors.length ? ' has-ambient' : ''}`}
+      style={ambientColors.length ? {
+        background: `radial-gradient(ellipse 120% 80% at 50% -20%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 35%, ${ambientColors[2] || ambientColors[0]} 60%, transparent 80%)`
+      } : {}}
+    >
       <div className="app-shell">
         <div className="youtube-player-wrapper"><div id="youtube-player-container"></div></div>
 
@@ -525,6 +561,9 @@ export default function App() {
             <ChevronLeft size={28} />
           </button>
           <div className="header-actions">
+            <button onClick={toggleFullscreen} className="icon-btn" title="Toggle fullscreen">
+              {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+            </button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} className="icon-btn">
               {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
             </button>
@@ -537,7 +576,7 @@ export default function App() {
 
           {activeTab === 'welcome' && (
             <div className="welcome-view">
-              <img src="/logo.png" alt="Dhun" className="welcome-logo" />
+              <img src="/newlogo.png" alt="Dhun" className="welcome-logo" />
               <h1 className="welcome-title">Dhun</h1>
               <p className="welcome-sub">Your personal music world</p>
               <div className="welcome-actions">
@@ -577,12 +616,7 @@ export default function App() {
           )}
 
           {activeTab === 'player' && (
-            <div
-              className={`player-view${ambientColors.length ? ' has-ambient' : ''}`}
-              style={ambientColors.length ? {
-                background: `radial-gradient(ellipse 120% 80% at 50% -10%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 40%, transparent 75%)`
-              } : {}}
-            >
+            <div className="player-view">
               <div className="track-info">
                 {currentTrack ? (
                   <>
@@ -829,7 +863,7 @@ export default function App() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
                 <button type="submit" className="explore-search-btn">
-                  <Search size={20} />
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                 </button>
               </form>
 
@@ -948,7 +982,7 @@ export default function App() {
               <House size={24} />
             </button>
             <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className={`nav-btn${activeTab === 'explore' ? ' active' : ''}`}>
-              <img src="/explore-icon.png" alt="Explore" className="nav-icon-img" />
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-svg-icon"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
             </button>
             <button onClick={() => navigateTo('player')} className={`nav-btn${activeTab === 'player' ? ' active' : ''}`}>
               <Music2 size={24} />

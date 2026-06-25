@@ -3,11 +3,24 @@
   background: #f4f4f5;
   color: #18181b;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  transition: background 0.5s, color 0.5s;
+  transition: background 1.2s ease, color 0.5s;
+  position: relative;
 }
 .app-root.dark {
   background: #09090b;
   color: #fafafa;
+}
+.app-root.has-ambient {
+  transition: background 1.5s ease;
+}
+.app-root.has-ambient .app-shell {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(60px) saturate(1.2);
+  -webkit-backdrop-filter: blur(60px) saturate(1.2);
+  box-shadow: none;
+}
+.dark.app-root.has-ambient .app-shell {
+  background: rgba(0,0,0,0.15);
 }
 
 .app-shell {
@@ -55,6 +68,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 48px 24px 24px;
+  position: relative;
+  z-index: 2;
 }
 .header-actions {
   display: flex;
@@ -172,26 +187,6 @@
   padding-bottom: 100px;
   position: relative;
   border-radius: 0;
-  transition: background 1.2s ease;
-}
-.player-view.has-ambient {
-  margin: -24px;
-  padding: 24px 24px 100px;
-  border-radius: 32px;
-}
-.player-view.has-ambient::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 32px;
-  backdrop-filter: blur(60px) saturate(1.4);
-  -webkit-backdrop-filter: blur(60px) saturate(1.4);
-  pointer-events: none;
-  z-index: 0;
-}
-.player-view.has-ambient > * {
-  position: relative;
-  z-index: 1;
 }
 .track-info {
   margin-bottom: 32px;
@@ -1002,20 +997,29 @@
   align-items: center;
   justify-content: center;
   gap: 32px;
-  background: rgba(255,255,255,0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   padding: 14px 28px;
   border-radius: 9999px;
   box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-  border: 1px solid #e4e4e7;
+  border: 1px solid rgba(228,228,231,0.5);
   pointer-events: auto;
   width: fit-content;
   margin: 0 auto;
 }
 .dark .bottom-nav-inner {
-  background: rgba(24,24,27,0.9);
-  border-color: #27272a;
+  background: rgba(24,24,27,0.85);
+  border-color: rgba(39,39,42,0.5);
+}
+.has-ambient .bottom-nav-inner {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.15);
+}
+.dark.has-ambient .bottom-nav-inner,
+.has-ambient.dark .bottom-nav-inner {
+  background: rgba(0,0,0,0.25);
+  border-color: rgba(255,255,255,0.08);
 }
 .nav-btn {
   background: none;
@@ -1044,27 +1048,24 @@
   border-radius: 50%;
   background: currentColor;
 }
-.nav-icon-img {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
-  filter: brightness(0) saturate(100%) invert(67%) sepia(5%) saturate(105%) hue-rotate(202deg) brightness(90%) contrast(90%);
-  transition: filter 0.2s;
+.nav-svg-icon {
+  color: #a1a1aa;
+  transition: color 0.2s;
 }
-.nav-btn:hover .nav-icon-img {
-  filter: brightness(0) saturate(100%) invert(30%) sepia(8%) saturate(0%) hue-rotate(244deg) brightness(98%) contrast(87%);
+.nav-btn:hover .nav-svg-icon {
+  color: #52525b;
 }
-.nav-btn.active .nav-icon-img {
-  filter: brightness(0) saturate(100%) invert(7%) sepia(5%) saturate(0%) hue-rotate(267deg) brightness(97%) contrast(90%);
+.nav-btn.active .nav-svg-icon {
+  color: #18181b;
 }
-.dark .nav-icon-img {
-  filter: brightness(0) saturate(100%) invert(67%) sepia(5%) saturate(105%) hue-rotate(202deg) brightness(90%) contrast(90%);
+.dark .nav-svg-icon {
+  color: #a1a1aa;
 }
-.dark .nav-btn:hover .nav-icon-img {
-  filter: brightness(0) saturate(100%) invert(85%) sepia(5%) saturate(0%) hue-rotate(189deg) brightness(88%) contrast(92%);
+.dark .nav-btn:hover .nav-svg-icon {
+  color: #d4d4d8;
 }
-.dark .nav-btn.active .nav-icon-img {
-  filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(93deg) brightness(103%) contrast(103%);
+.dark .nav-btn.active .nav-svg-icon {
+  color: #fafafa;
 }
 
 /* ---- Liked Songs Card ---- */
