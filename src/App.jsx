@@ -576,7 +576,7 @@ export default function App() {
 
           {activeTab === 'welcome' && (
             <div className="welcome-view">
-              <img src="newlogo.png" alt="Dhun" className="welcome-logo" />
+              <img src="/newlogo.png" alt="Dhun" className="welcome-logo" />
               <h1 className="welcome-title">Dhun</h1>
               <p className="welcome-sub">Your personal music world</p>
               <div className="welcome-actions">
