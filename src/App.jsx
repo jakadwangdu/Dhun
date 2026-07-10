@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2 } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles } from 'lucide-react'
 import './App.css'
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
@@ -48,6 +48,8 @@ function loadVideoSafely(player, videoId) {
 
 let setPlayerError = () => {}
 
+const TABS = ['welcome', 'explore', 'player', 'playlists']
+
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [isYtReady, setIsYtReady] = useState(false)
@@ -94,6 +96,16 @@ export default function App() {
   const [ambientColors, setAmbientColors] = useState([])
   const [isFullscreen, setIsFullscreen] = useState(false)
 
+  const [repeatMode, setRepeatMode] = useState('none')
+  const [headerSearchQuery, setHeaderSearchQuery] = useState('')
+  const [headerSearchResults, setHeaderSearchResults] = useState([])
+  const [isHeaderSearching, setIsHeaderSearching] = useState(false)
+  const [showHeaderSearch, setShowHeaderSearch] = useState(false)
+  const [showRecommendedSongs, setShowRecommendedSongs] = useState(false)
+  const [recommendedSongs, setRecommendedSongs] = useState([])
+  const [isLoadingRecommended, setIsLoadingRecommended] = useState(false)
+  const [quickPicks, setQuickPicks] = useState([])
+
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
   const playerReadyRef = useRef(false)
@@ -101,13 +113,28 @@ export default function App() {
   const prevTabRef = useRef('welcome')
   const playerRef = useRef(null)
 
+  const repeatModeRef = useRef('none')
+  const queueRef = useRef([])
+  const currentIndexRef = useRef(0)
+  const headerSearchTimeout = useRef(null)
+  const headerSearchInputRef = useRef(null)
+
   const longPressTimer = useRef(null)
   const isLongPress = useRef(false)
+
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
 
   setPlayerError = (msg) => {
     setPlayerErrorState(msg)
     if (msg) setTimeout(() => setPlayerErrorState(null), 5000)
   }
+
+  const handleTrackEndRef = useRef(() => {})
+
+  useEffect(() => { repeatModeRef.current = repeatMode }, [repeatMode])
+  useEffect(() => { queueRef.current = queue }, [queue])
+  useEffect(() => { currentIndexRef.current = currentTrackIndex }, [currentTrackIndex])
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -189,7 +216,7 @@ export default function App() {
             } else if (event.data === window.YT.PlayerState.ENDED) {
               setIsPlaying(false)
               stopProgressTimer()
-              handleNext()
+              handleTrackEndRef.current()
             } else if (event.data === window.YT.PlayerState.BUFFERING) {
               stopProgressTimer()
             } else if (event.data === window.YT.PlayerState.CUED) {
@@ -214,12 +241,23 @@ export default function App() {
     }
   }, [isYtReady])
 
+  const currentTrack = queue[currentTrackIndex] || null
+  const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistId) || null
+
+  const isLiked = (song) => song && likedSongs.some(s => s.id === song.id)
+
   useEffect(() => {
     if (currentTrack) {
       setShowLyrics(false)
       setLyrics(null)
     }
   }, [currentTrackIndex, queue])
+
+  useEffect(() => {
+    if (currentTrack) {
+      fetchSimilarSongs(currentTrack)
+    }
+  }, [currentTrack])
 
   const startProgressTimer = (ytPlayer) => {
     stopProgressTimer()
@@ -262,6 +300,39 @@ export default function App() {
     }
   }
 
+  const handleTrackEnd = useCallback(() => {
+    const mode = repeatModeRef.current
+    const q = queueRef.current
+    const idx = currentIndexRef.current
+    if (mode === 'one') {
+      const p = playerRef.current
+      if (p) {
+        p.seekTo(0, true)
+        setTimeout(() => p.playVideo(), 150)
+      }
+    } else if (mode === 'all') {
+      if (q.length > 0) {
+        const nextIdx = (idx + 1) % q.length
+        const track = q[nextIdx]
+        if (track) {
+          setCurrentTrackIndex(nextIdx)
+          actuallyPlay(track)
+        }
+      }
+    } else {
+      if (q.length > 0 && idx < q.length - 1) {
+        const nextIdx = idx + 1
+        const track = q[nextIdx]
+        if (track) {
+          setCurrentTrackIndex(nextIdx)
+          actuallyPlay(track)
+        }
+      }
+    }
+  }, [actuallyPlay])
+
+  handleTrackEndRef.current = handleTrackEnd
+
   const handleNext = useCallback(() => {
     if (queue.length === 0) return
     playTrack((currentTrackIndex + 1) % queue.length, queue)
@@ -269,8 +340,16 @@ export default function App() {
 
   const handlePrev = useCallback(() => {
     if (queue.length === 0) return
+    if (repeatMode === 'one') {
+      const p = playerRef.current
+      if (p) {
+        p.seekTo(0, true)
+        p.playVideo()
+      }
+      return
+    }
     playTrack(currentTrackIndex === 0 ? queue.length - 1 : currentTrackIndex - 1, queue)
-  }, [queue, currentTrackIndex, playTrack])
+  }, [queue, currentTrackIndex, playTrack, repeatMode])
 
   const handleSeek = (e) => {
     const newTime = parseFloat(e.target.value)
@@ -278,6 +357,10 @@ export default function App() {
     try {
       playerRef.current?.seekTo(newTime, true)
     } catch (e) {}
+  }
+
+  const handleRepeatToggle = () => {
+    setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')
   }
 
   const navigateTo = (tab) => {
@@ -288,6 +371,12 @@ export default function App() {
   const handleHeaderBack = () => {
     if (activeTab === 'explore' && !showTrending) {
       handleBackFromSearch()
+      return
+    }
+    if (showHeaderSearch) {
+      setShowHeaderSearch(false)
+      setHeaderSearchQuery('')
+      setHeaderSearchResults([])
       return
     }
     navigateTo(prevTabRef.current)
@@ -412,6 +501,9 @@ export default function App() {
       isLongPress.current = false
       return
     }
+    setShowHeaderSearch(false)
+    setHeaderSearchQuery('')
+    setHeaderSearchResults([])
     addToRecent(track)
     setQueue([track])
     setCurrentTrackIndex(0)
@@ -482,10 +574,112 @@ export default function App() {
     actuallyPlay(playlist.songs[0])
   }
 
-  const currentTrack = queue[currentTrackIndex] || null
-  const selectedPlaylist = playlists.find(p => p.id === selectedPlaylistId) || null
+  const playTrackFromHeader = (track) => {
+    setShowHeaderSearch(false)
+    setHeaderSearchQuery('')
+    setHeaderSearchResults([])
+    playSong(track)
+  }
 
-  const isLiked = (song) => song && likedSongs.some(s => s.id === song.id)
+  const doHeaderSearch = (query) => {
+    setHeaderSearchQuery(query)
+    if (headerSearchTimeout.current) clearTimeout(headerSearchTimeout.current)
+    if (!query.trim()) {
+      setHeaderSearchResults([])
+      return
+    }
+    setIsHeaderSearching(true)
+    headerSearchTimeout.current = setTimeout(async () => {
+      try {
+        const response = await fetchWithRetry(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=5`
+        )
+        const data = await response.json()
+        const results = (data.items || []).map(item => ({
+          id: item.id.videoId,
+          title: item.snippet.title,
+          artist: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails.default?.url
+        }))
+        setHeaderSearchResults(results)
+      } catch {
+        setHeaderSearchResults([])
+      } finally {
+        setIsHeaderSearching(false)
+      }
+    }, 400)
+  }
+
+  const fetchSimilarSongs = async (track) => {
+    if (!track || !YOUTUBE_API_KEY) return
+    setIsLoadingRecommended(true)
+    try {
+      const query = `${track.title} ${track.artist} music`
+      const response = await fetchWithRetry(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=7`
+      )
+      const data = await response.json()
+      const results = (data.items || [])
+        .map(item => ({
+          id: item.id.videoId,
+          title: item.snippet.title,
+          artist: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
+        }))
+      setRecommendedSongs(results.filter(s => s.id !== track.id).slice(0, 5))
+    } catch {
+      setRecommendedSongs([])
+    } finally {
+      setIsLoadingRecommended(false)
+    }
+  }
+
+  const getRediscoverSongs = useCallback(() => {
+    const recentIds = new Set(recentlyPlayed.slice(0, 10).map(s => s.id))
+    return likedSongs.filter(s => !recentIds.has(s.id)).slice(0, 8)
+  }, [likedSongs, recentlyPlayed])
+
+  const buildQuickPicks = useCallback(() => {
+    const recentIds = new Set()
+    const picks = []
+    const recent = recentlyPlayed.slice(0, 10)
+    const recentArtistSet = new Set(recent.map(s => s.artist))
+    const likedArtistSet = new Set(likedSongs.map(s => s.artist))
+
+    const seen = new Set()
+    const addUnique = (songs) => {
+      for (const s of songs) {
+        if (!seen.has(s.id) && picks.length < 8) {
+          seen.add(s.id)
+          picks.push(s)
+        }
+      }
+    }
+
+    const artistMatched = trendingSongs.filter(s =>
+      recentArtistSet.has(s.artist) || likedArtistSet.has(s.artist)
+    )
+    addUnique(artistMatched)
+    addUnique(trendingSongs)
+    addUnique(likedSongs)
+    addUnique(recentlyPlayed)
+
+    return picks.sort(() => Math.random() - 0.5).slice(0, 8)
+  }, [recentlyPlayed, likedSongs, trendingSongs])
+
+  useEffect(() => {
+    if (trendingSongs.length > 0) {
+      setQuickPicks(buildQuickPicks())
+    }
+  }, [trendingSongs, buildQuickPicks])
+
+  useEffect(() => {
+    if (likedSongs.length > 0 || recentlyPlayed.length > 0) {
+      if (trendingSongs.length > 0) {
+        setQuickPicks(buildQuickPicks())
+      }
+    }
+  }, [likedSongs, recentlyPlayed, buildQuickPicks, trendingSongs.length])
 
   const makeSoothing = (r, g, b) => {
     const gray = r * 0.299 + g * 0.587 + b * 0.114
@@ -546,6 +740,49 @@ export default function App() {
     }
   }, [currentTrack, extractAmbientColors])
 
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e) => {
+    const endX = e.changedTouches[0].clientX
+    const endY = e.changedTouches[0].clientY
+    const dx = endX - touchStartX.current
+    const dy = endY - touchStartY.current
+    const absDx = Math.abs(dx)
+    const absDy = Math.abs(dy)
+
+    if (absDx > 60 && absDx > absDy * 1.5) {
+      const currentIdx = TABS.indexOf(activeTab)
+      if (dx < 0 && currentIdx < TABS.length - 1) {
+        if (TABS[currentIdx + 1] === 'explore') fetchTrendingSongs()
+        navigateTo(TABS[currentIdx + 1])
+      } else if (dx > 0 && currentIdx > 0) {
+        navigateTo(TABS[currentIdx - 1])
+      }
+    }
+  }
+
+  const rediscoverSongs = getRediscoverSongs()
+
+  const handlePlayQuickPick = (song) => {
+    addToRecent(song)
+    setQueue([song])
+    setCurrentTrackIndex(0)
+    navigateTo('player')
+    actuallyPlay(song)
+  }
+
+  const playPlaylistSongFromQueue = (song, queueList) => {
+    addToRecent(song)
+    setQueue(queueList)
+    const idx = queueList.findIndex(s => s.id === song.id)
+    setCurrentTrackIndex(idx)
+    navigateTo('player')
+    actuallyPlay(song)
+  }
+
   return (
     <div
       className={`app-root${isDarkMode ? ' dark' : ''}${ambientColors.length ? ' has-ambient' : ''}`}
@@ -556,10 +793,58 @@ export default function App() {
       <div className="app-shell">
         <div className="youtube-player-wrapper"><div id="youtube-player-container"></div></div>
 
-        <header className="app-header">
+        <header className={`app-header${showHeaderSearch ? ' header-search-active' : ''}`}>
           <button onClick={handleHeaderBack} className="icon-btn back-btn">
             <ChevronLeft size={28} />
           </button>
+
+          <div className={`header-search-container${showHeaderSearch ? ' expanded' : ''}`}>
+            <button
+              className="header-search-trigger"
+              onClick={() => { setShowHeaderSearch(true); setTimeout(() => headerSearchInputRef.current?.focus(), 100) }}
+            >
+              <Search size={18} />
+              {!showHeaderSearch && <span className="header-search-placeholder">Search</span>}
+            </button>
+            {showHeaderSearch && (
+              <div className="header-search-dropdown">
+                <div className="header-search-input-wrap">
+                  <Search size={16} className="header-search-icon" />
+                  <input
+                    ref={headerSearchInputRef}
+                    type="text"
+                    className="header-search-input"
+                    placeholder="Search songs, artists..."
+                    value={headerSearchQuery}
+                    onChange={(e) => doHeaderSearch(e.target.value)}
+                    onBlur={() => setTimeout(() => { if (!headerSearchQuery) setShowHeaderSearch(false) }, 200)}
+                  />
+                  {headerSearchQuery && (
+                    <button className="header-search-clear" onClick={() => { setHeaderSearchQuery(''); setHeaderSearchResults([]); headerSearchInputRef.current?.focus() }}>
+                      <ChevronLeft size={16} />
+                    </button>
+                  )}
+                </div>
+                {isHeaderSearching && (
+                  <div className="header-search-loading"><div className="spinner-sm" /></div>
+                )}
+                {headerSearchResults.length > 0 && (
+                  <div className="header-search-results">
+                    {headerSearchResults.map(song => (
+                      <div key={song.id} className="header-search-result-item" onClick={() => playTrackFromHeader(song)}>
+                        <img src={song.thumbnail} alt="" className="header-search-result-thumb" />
+                        <div className="header-search-result-info">
+                          <p className="header-search-result-title">{song.title}</p>
+                          <p className="header-search-result-artist">{song.artist}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="header-actions">
             <button onClick={toggleFullscreen} className="icon-btn" title="Toggle fullscreen">
               {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
@@ -570,36 +855,52 @@ export default function App() {
           </div>
         </header>
 
-        <main className="app-main">
+        <main
+          className="app-main"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {errorMsg && <div className="error-toast">{errorMsg}</div>}
           {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
 
           {activeTab === 'welcome' && (
             <div className="welcome-view">
-              <img src="/logo.png" alt="Dhun" className="welcome-logo" />
-              <h1 className="welcome-title">Dhun</h1>
-              <p className="welcome-sub">Your personal music world</p>
-              <div className="welcome-actions">
-                <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className="welcome-btn">
-                  <Search size={20} />
-                  Explore Songs
-                </button>
-                <button onClick={() => navigateTo('playlists')} className="welcome-btn">
-                  <ListMusic size={20} />
-                  My Playlists
-                </button>
-              </div>
+              {quickPicks.length > 0 && (
+                <section className="home-section">
+                  <div className="home-section-header">
+                    <Sparkles size={18} className="home-section-icon" />
+                    <h2 className="home-section-title">Quick Picks</h2>
+                  </div>
+                  <div className="quick-picks-scroll">
+                    <div className="quick-picks-track">
+                      {quickPicks.map(song => (
+                        <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
+                          <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                          <div className="quick-pick-info">
+                            <p className="quick-pick-title">{song.title}</p>
+                            <p className="quick-pick-artist">{song.artist}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              )}
 
-              {recentlyPlayed.length > 0 && (
-                <div className="recent-section">
-                  <h3 className="recent-title">Recently Played</h3>
-                  <div className="recent-list">
-                    {recentlyPlayed.map(song => (
-                      <div key={song.id} className="recent-item" onClick={() => playSong(song)}>
-                        <img src={song.thumbnail} alt="" className="recent-thumb" />
-                        <div className="recent-info">
-                          <p className="recent-song-title">{song.title}</p>
-                          <p className="recent-song-artist">{song.artist}</p>
+              {rediscoverSongs.length > 0 && (
+                <section className="home-section">
+                  <div className="home-section-header">
+                    <Clock size={18} className="home-section-icon" />
+                    <h2 className="home-section-title">Rediscover</h2>
+                    <span className="home-section-sub">From your likes</span>
+                  </div>
+                  <div className="rediscover-list">
+                    {rediscoverSongs.map(song => (
+                      <div key={song.id} className="rediscover-item" onClick={() => handlePlayQuickPick(song)}>
+                        <img src={song.thumbnail} alt="" className="rediscover-thumb" />
+                        <div className="rediscover-info">
+                          <p className="rediscover-song-title">{song.title}</p>
+                          <p className="rediscover-song-artist">{song.artist}</p>
                         </div>
                         <button
                           className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
@@ -610,8 +911,19 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
               )}
+
+              <div className="home-actions-row">
+                <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className="home-action-btn">
+                  <Search size={18} />
+                  Explore
+                </button>
+                <button onClick={() => navigateTo('playlists')} className="home-action-btn">
+                  <ListMusic size={18} />
+                  Playlists
+                </button>
+              </div>
             </div>
           )}
 
@@ -653,7 +965,7 @@ export default function App() {
                   </div>
 
                   <div className="controls-row">
-                    <button onClick={handlePrev} disabled={queue.length <= 1} className="ctrl-btn">
+                    <button onClick={handlePrev} disabled={queue.length <= 1 && repeatMode !== 'one'} className="ctrl-btn">
                       <SkipBack size={28} fill="currentColor" />
                     </button>
                     <button onClick={togglePlayPause} className="ctrl-btn ctrl-btn-play">
@@ -661,12 +973,20 @@ export default function App() {
                         ? <Pause size={32} fill="currentColor" />
                         : <Play size={32} fill="currentColor" />}
                     </button>
-                    <button onClick={handleNext} disabled={queue.length <= 1} className="ctrl-btn">
+                    <button onClick={handleNext} disabled={queue.length <= 1 && repeatMode !== 'one'} className="ctrl-btn">
                       <SkipForward size={28} fill="currentColor" />
                     </button>
                   </div>
 
                   <div className="player-actions-row">
+                    <button
+                      onClick={handleRepeatToggle}
+                      className={`player-action-btn${repeatMode !== 'none' ? ' active-action-btn' : ''}`}
+                      title={repeatMode === 'none' ? 'No repeat' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
+                    >
+                      {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+                      {repeatMode === 'none' ? 'Repeat' : repeatMode === 'all' ? 'Repeat All' : 'Repeat One'}
+                    </button>
                     <button
                       onClick={() => toggleLike(currentTrack)}
                       className={`player-action-btn${isLiked(currentTrack) ? ' liked-btn' : ''}`}
@@ -680,7 +1000,7 @@ export default function App() {
                     </button>
                     <button onClick={() => setAddToPlaylistTarget(currentTrack)} className="player-action-btn">
                       <Plus size={18} />
-                      Add to Playlist
+                      Add
                     </button>
                   </div>
 
@@ -693,6 +1013,50 @@ export default function App() {
                       )}
                     </div>
                   )}
+
+                  <div className="recommended-section">
+                    <button
+                      className="recommended-toggle"
+                      onClick={() => setShowRecommendedSongs(!showRecommendedSongs)}
+                    >
+                      <span>You Might Also Like</span>
+                      <ChevronUp size={18} className={`recommended-arrow${showRecommendedSongs ? ' rotated' : ''}`} />
+                    </button>
+                    {showRecommendedSongs && (
+                      <div className="recommended-list">
+                        {isLoadingRecommended ? (
+                          <div className="recommended-loading"><div className="spinner" /></div>
+                        ) : recommendedSongs.length > 0 ? (
+                          recommendedSongs.map(song => (
+                            <div
+                              key={song.id}
+                              className="recommended-item"
+                              onClick={() => {
+                                addToRecent(song)
+                                setQueue([song])
+                                setCurrentTrackIndex(0)
+                                actuallyPlay(song)
+                              }}
+                            >
+                              <img src={song.thumbnail} alt="" className="recommended-thumb" />
+                              <div className="recommended-info">
+                                <p className="recommended-title">{song.title}</p>
+                                <p className="recommended-artist">{song.artist}</p>
+                              </div>
+                              <button
+                                className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                              >
+                                <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="recommended-empty">No similar songs found</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -724,7 +1088,7 @@ export default function App() {
                       {likedSongs.map(song => (
                         <div key={song.id}
                           className="playlist-song-item"
-                          onClick={() => { addToRecent(song); setQueue(likedSongs); const idx = likedSongs.findIndex(s => s.id === song.id); setCurrentTrackIndex(idx); navigateTo('player'); actuallyPlay(song) }}
+                          onClick={() => playPlaylistSongFromQueue(song, likedSongs)}
                           onPointerDown={() => handlePointerDown(song)}
                           onPointerUp={handlePointerUp}
                           onPointerLeave={handlePointerLeave}
@@ -845,6 +1209,38 @@ export default function App() {
                           </button>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {recentlyPlayed.length > 0 && (
+                    <div className="recent-section">
+                      <div className="recent-section-header">
+                        <Clock size={16} />
+                        <h3 className="recent-title">Recently Played</h3>
+                      </div>
+                      <div className="recent-list">
+                        {recentlyPlayed.map(song => (
+                          <div key={song.id} className="recent-item" onClick={() => {
+                            addToRecent(song)
+                            setQueue([song])
+                            setCurrentTrackIndex(0)
+                            navigateTo('player')
+                            actuallyPlay(song)
+                          }}>
+                            <img src={song.thumbnail} alt="" className="recent-thumb" />
+                            <div className="recent-info">
+                              <p className="recent-song-title">{song.title}</p>
+                              <p className="recent-song-artist">{song.artist}</p>
+                            </div>
+                            <button
+                              className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
+                              onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                            >
+                              <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </>
