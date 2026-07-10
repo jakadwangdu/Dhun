@@ -447,18 +447,29 @@ export default function App() {
   const fetchLyrics = async (artist, title) => {
     if (!artist || !title) return
     setIsLoadingLyrics(true)
+    setLyrics(null)
     try {
+      const cleanTitle = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim()
       const response = await fetch(
-        `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`
+        `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(cleanTitle)}`
       )
-      const data = await response.json()
-      if (data.lyrics) {
-        setLyrics(data.lyrics)
-      } else {
-        setLyrics('No lyrics found for this song.')
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
       }
-    } catch (err) {
-      setLyrics('Could not load lyrics.')
+      const data = await response.json()
+      if (data.lyrics && data.lyrics.length > 20) {
+        const cleaned = data.lyrics
+          .replace(/\r\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/^.*?lyrics.*?\n/i, '')
+          .replace(/^\d+\s*Contributors?\s*$/m, '')
+          .trim()
+        setLyrics(cleaned || data.lyrics)
+      } else {
+        setLyrics(null)
+      }
+    } catch {
+      setLyrics(null)
     } finally {
       setIsLoadingLyrics(false)
     }
@@ -466,9 +477,11 @@ export default function App() {
 
   const toggleLyrics = () => {
     if (!showLyrics && currentTrack) {
+      setShowLyrics(true)
       fetchLyrics(currentTrack.artist, currentTrack.title)
+    } else {
+      setShowLyrics(!showLyrics)
     }
-    setShowLyrics(!showLyrics)
   }
 
   const searchYouTube = async (query) => {
@@ -753,7 +766,7 @@ export default function App() {
     const absDx = Math.abs(dx)
     const absDy = Math.abs(dy)
 
-    if (absDx > 60 && absDx > absDy * 1.5) {
+    if (absDx > 100 && absDx > absDy * 2) {
       const currentIdx = TABS.indexOf(activeTab)
       if (dx < 0 && currentIdx < TABS.length - 1) {
         if (TABS[currentIdx + 1] === 'explore') fetchTrendingSongs()
@@ -787,7 +800,10 @@ export default function App() {
     <div
       className={`app-root${isDarkMode ? ' dark' : ''}${ambientColors.length ? ' has-ambient' : ''}`}
       style={ambientColors.length ? {
-        background: `radial-gradient(ellipse 120% 80% at 50% -20%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 35%, ${ambientColors[2] || ambientColors[0]} 60%, transparent 80%)`
+        background: `
+          radial-gradient(ellipse 160% 55% at 50% -25%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 28%, transparent 68%),
+          radial-gradient(ellipse 160% 55% at 50% 125%, ${ambientColors[2] || ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 28%, transparent 68%)
+        `
       } : {}}
     >
       <div className="app-shell">
@@ -1008,8 +1024,14 @@ export default function App() {
                     <div className="lyrics-content-wrapper">
                       {isLoadingLyrics ? (
                         <div className="lyrics-loading"><div className="spinner" /></div>
+                      ) : lyrics ? (
+                        <pre className="lyrics-content">{lyrics}</pre>
                       ) : (
-                        <pre className="lyrics-content">{lyrics || 'No lyrics available.'}</pre>
+                        <div className="lyrics-empty">
+                          <Mic2 size={28} />
+                          <p>No lyrics available</p>
+                          <span>Try searching for a different version</span>
+                        </div>
                       )}
                     </div>
                   )}
