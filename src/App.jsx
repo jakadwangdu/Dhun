@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles } from 'lucide-react'
 import './App.css'
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
@@ -105,6 +105,7 @@ export default function App() {
   const [recommendedSongs, setRecommendedSongs] = useState([])
   const [isLoadingRecommended, setIsLoadingRecommended] = useState(false)
   const [quickPicks, setQuickPicks] = useState([])
+  const [recommendedPlaylists, setRecommendedPlaylists] = useState([])
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -122,18 +123,17 @@ export default function App() {
   const longPressTimer = useRef(null)
   const isLongPress = useRef(false)
 
-  const touchStartX = useRef(0)
-  const touchStartY = useRef(0)
-
   setPlayerError = (msg) => {
     setPlayerErrorState(msg)
     if (msg) setTimeout(() => setPlayerErrorState(null), 5000)
   }
 
   const handleTrackEndRef = useRef(() => {})
+  const darkModeRef = useRef(false)
 
   useEffect(() => { repeatModeRef.current = repeatMode }, [repeatMode])
   useEffect(() => { queueRef.current = queue }, [queue])
+  useEffect(() => { darkModeRef.current = isDarkMode }, [isDarkMode])
   useEffect(() => { currentIndexRef.current = currentTrackIndex }, [currentTrackIndex])
 
   const toggleFullscreen = () => {
@@ -493,12 +493,14 @@ export default function App() {
         `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=10`
       )
       const data = await response.json()
-      const results = (data.items || []).map(item => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
-      }))
+      const results = (data.items || [])
+        .filter(item => item.id?.videoId)
+        .map(item => ({
+          id: item.id.videoId,
+          title: item.snippet.title,
+          artist: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
+        }))
       setSearchResults(results)
       setShowTrending(false)
     } catch (err) {
@@ -524,9 +526,13 @@ export default function App() {
     actuallyPlay(track)
   }
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault()
-    searchYouTube(searchQuery)
+  const handleCategorySearch = (playlist) => {
+    setHeaderSearchQuery(playlist.name)
+    setSearchQuery(playlist.name)
+    setIsSearching(true)
+    searchYouTube(playlist.query || playlist.name)
+    setShowHeaderSearch(false)
+    navigateTo('explore')
   }
 
   const handleBackFromSearch = () => {
@@ -608,12 +614,14 @@ export default function App() {
           `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=5`
         )
         const data = await response.json()
-        const results = (data.items || []).map(item => ({
-          id: item.id.videoId,
-          title: item.snippet.title,
-          artist: item.snippet.channelTitle,
-          thumbnail: item.snippet.thumbnails.default?.url
-        }))
+        const results = (data.items || [])
+          .filter(item => item.id?.videoId)
+          .map(item => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            artist: item.snippet.channelTitle,
+            thumbnail: item.snippet.thumbnails.default?.url
+          }))
         setHeaderSearchResults(results)
       } catch {
         setHeaderSearchResults([])
@@ -623,7 +631,41 @@ export default function App() {
     }, 400)
   }
 
-  const fetchSimilarSongs = async (track) => {
+  const handleHeaderSearchSubmit = () => {
+    if (!headerSearchQuery.trim()) return
+    setSearchQuery(headerSearchQuery)
+    setIsSearching(true)
+    searchYouTube(headerSearchQuery)
+    setShowHeaderSearch(false)
+    navigateTo('explore')
+  }
+
+  const curatedPlaylists = [
+  { id: 'gym', name: 'GYM', query: 'workout music gym', icon: '💪' },
+  { id: 'bollywood', name: 'Bollywood', query: 'bollywood dance hits 2025', icon: '🎬' },
+  { id: 'fast', name: 'Fast', query: 'fast energetic workout music', icon: '⚡' },
+  { id: 'funk', name: 'Funk', query: 'funk disco grove', icon: '🕺' },
+  { id: 'hiphop', name: 'Hip Hop', query: 'hip hop rap bangers', icon: '🎤' },
+  { id: 'chill', name: 'Chill', query: 'chill lofi relaxing', icon: '🌊' },
+  { id: 'rnb', name: 'R&B', query: 'rnb soul vibes', icon: '🎸' },
+  { id: 'rock', name: 'Rock', query: 'rock alternative', icon: '🤘' },
+  { id: 'jazz', name: 'Jazz', query: 'jazz smooth', icon: '🎷' },
+  { id: 'edm', name: 'EDM', query: 'edm electronic dance', icon: '🔊' },
+  { id: 'party', name: 'Party', query: 'party dance hits', icon: '🎉' },
+  { id: 'sad', name: 'Sad', query: 'sad emotional songs', icon: '😢' },
+]
+
+const getMatchingPlaylists = (query) => {
+  if (!query || !query.trim()) return []
+  const q = query.toLowerCase().trim()
+  return curatedPlaylists.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    p.query.toLowerCase().includes(q) ||
+    q.includes(p.name.toLowerCase())
+  )
+}
+
+const fetchSimilarSongs = async (track) => {
     if (!track || !YOUTUBE_API_KEY) return
     setIsLoadingRecommended(true)
     try {
@@ -633,6 +675,7 @@ export default function App() {
       )
       const data = await response.json()
       const results = (data.items || [])
+        .filter(item => item.id?.videoId)
         .map(item => ({
           id: item.id.videoId,
           title: item.snippet.title,
@@ -680,11 +723,23 @@ export default function App() {
     return picks.sort(() => Math.random() - 0.5).slice(0, 8)
   }, [recentlyPlayed, likedSongs, trendingSongs])
 
+  const buildRecommendedPlaylists = useCallback(() => {
+    if (trendingSongs.length < 4) return
+    const shuffled = [...trendingSongs].sort(() => Math.random() - 0.5)
+    const genres = [
+      { name: '🔥 Trending Now', icon: 'fire', songs: shuffled.slice(0, 6) },
+      { name: '🎵 Top Picks', icon: 'music', songs: shuffled.slice(4, 10) },
+      { name: '🌟 Discover', icon: 'star', songs: shuffled.slice(8, 14).length > 2 ? shuffled.slice(8, 14) : shuffled.slice(0, 6) },
+    ]
+    setRecommendedPlaylists(genres.filter(p => p.songs.length >= 3))
+  }, [trendingSongs])
+
   useEffect(() => {
     if (trendingSongs.length > 0) {
       setQuickPicks(buildQuickPicks())
+      buildRecommendedPlaylists()
     }
-  }, [trendingSongs, buildQuickPicks])
+  }, [trendingSongs, buildQuickPicks, buildRecommendedPlaylists])
 
   useEffect(() => {
     if (likedSongs.length > 0 || recentlyPlayed.length > 0) {
@@ -694,14 +749,21 @@ export default function App() {
     }
   }, [likedSongs, recentlyPlayed, buildQuickPicks, trendingSongs.length])
 
-  const makeSoothing = (r, g, b) => {
+  const makeAmbientColor = (r, g, b, isDark) => {
     const gray = r * 0.299 + g * 0.587 + b * 0.114
-    const dr = Math.round(r + (gray - r) * 0.6)
-    const dg = Math.round(g + (gray - g) * 0.6)
-    const db = Math.round(b + (gray - b) * 0.6)
-    const lr = Math.round(dr + (255 - dr) * 0.35)
-    const lg = Math.round(dg + (255 - dg) * 0.35)
-    const lb = Math.round(db + (255 - db) * 0.35)
+    const saturation = 0.3
+    const dr = Math.round(r + (gray - r) * saturation)
+    const dg = Math.round(g + (gray - g) * saturation)
+    const db = Math.round(b + (gray - b) * saturation)
+    if (isDark) {
+      const lr = Math.round(dr * 0.5)
+      const lg = Math.round(dg * 0.5)
+      const lb = Math.round(db * 0.5)
+      return `rgb(${lr},${lg},${lb})`
+    }
+    const lr = Math.round(dr + (255 - dr) * 0.3)
+    const lg = Math.round(dg + (255 - dg) * 0.3)
+    const lb = Math.round(db + (255 - db) * 0.3)
     return `rgb(${lr},${lg},${lb})`
   }
 
@@ -734,10 +796,10 @@ export default function App() {
       }
       const sorted = Object.entries(colorMap)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
+        .slice(0, 4)
         .map(([key]) => {
           const [r, g, b] = key.split(',').map(Number)
-          return makeSoothing(r, g, b)
+          return makeAmbientColor(r, g, b, darkModeRef.current)
         })
       setAmbientColors(sorted)
     } catch {
@@ -752,30 +814,6 @@ export default function App() {
       setAmbientColors([])
     }
   }, [currentTrack, extractAmbientColors])
-
-  const handleTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX
-    touchStartY.current = e.touches[0].clientY
-  }
-
-  const handleTouchEnd = (e) => {
-    const endX = e.changedTouches[0].clientX
-    const endY = e.changedTouches[0].clientY
-    const dx = endX - touchStartX.current
-    const dy = endY - touchStartY.current
-    const absDx = Math.abs(dx)
-    const absDy = Math.abs(dy)
-
-    if (absDx > 100 && absDx > absDy * 2) {
-      const currentIdx = TABS.indexOf(activeTab)
-      if (dx < 0 && currentIdx < TABS.length - 1) {
-        if (TABS[currentIdx + 1] === 'explore') fetchTrendingSongs()
-        navigateTo(TABS[currentIdx + 1])
-      } else if (dx > 0 && currentIdx > 0) {
-        navigateTo(TABS[currentIdx - 1])
-      }
-    }
-  }
 
   const rediscoverSongs = getRediscoverSongs()
 
@@ -801,8 +839,10 @@ export default function App() {
       className={`app-root${isDarkMode ? ' dark' : ''}${ambientColors.length ? ' has-ambient' : ''}`}
       style={ambientColors.length ? {
         background: `
-          radial-gradient(ellipse 160% 55% at 50% -25%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 28%, transparent 68%),
-          radial-gradient(ellipse 160% 55% at 50% 125%, ${ambientColors[2] || ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 28%, transparent 68%)
+          radial-gradient(ellipse 150% 50% at 50% -20%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 35%, transparent 70%),
+          radial-gradient(ellipse 120% 45% at 20% 100%, ${ambientColors[2] || ambientColors[0]} 0%, transparent 65%),
+          radial-gradient(ellipse 120% 45% at 80% 100%, ${ambientColors[3] || ambientColors[1] || ambientColors[0]} 0%, transparent 65%),
+          linear-gradient(to bottom, ${ambientColors[0]}00 0%, ${ambientColors[0]}08 100%)
         `
       } : {}}
     >
@@ -833,6 +873,7 @@ export default function App() {
                     placeholder="Search songs, artists..."
                     value={headerSearchQuery}
                     onChange={(e) => doHeaderSearch(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleHeaderSearchSubmit() } }}
                     onBlur={() => setTimeout(() => { if (!headerSearchQuery) setShowHeaderSearch(false) }, 200)}
                   />
                   {headerSearchQuery && (
@@ -855,6 +896,9 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                    <div className="header-search-see-all" onClick={handleHeaderSearchSubmit}>
+                      See all results for "{headerSearchQuery}"
+                    </div>
                   </div>
                 )}
               </div>
@@ -871,11 +915,7 @@ export default function App() {
           </div>
         </header>
 
-        <main
-          className="app-main"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
+        <main className="app-main">
           {errorMsg && <div className="error-toast">{errorMsg}</div>}
           {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
 
@@ -884,7 +924,6 @@ export default function App() {
               {quickPicks.length > 0 && (
                 <section className="home-section">
                   <div className="home-section-header">
-                    <Sparkles size={18} className="home-section-icon" />
                     <h2 className="home-section-title">Quick Picks</h2>
                   </div>
                   <div className="quick-picks-scroll">
@@ -903,43 +942,19 @@ export default function App() {
                 </section>
               )}
 
-              {rediscoverSongs.length > 0 && (
-                <section className="home-section">
-                  <div className="home-section-header">
-                    <Clock size={18} className="home-section-icon" />
-                    <h2 className="home-section-title">Rediscover</h2>
-                    <span className="home-section-sub">From your likes</span>
-                  </div>
-                  <div className="rediscover-list">
-                    {rediscoverSongs.map(song => (
-                      <div key={song.id} className="rediscover-item" onClick={() => handlePlayQuickPick(song)}>
-                        <img src={song.thumbnail} alt="" className="rediscover-thumb" />
-                        <div className="rediscover-info">
-                          <p className="rediscover-song-title">{song.title}</p>
-                          <p className="rediscover-song-artist">{song.artist}</p>
-                        </div>
-                        <button
-                          className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
-                          onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
-                        >
-                          <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              <div className="home-actions-row">
-                <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className="home-action-btn">
-                  <Search size={18} />
-                  Explore
-                </button>
-                <button onClick={() => navigateTo('playlists')} className="home-action-btn">
-                  <ListMusic size={18} />
-                  Playlists
-                </button>
-              </div>
+              <section className="home-section">
+                <div className="home-section-header">
+                  <h2 className="home-section-title">Browse by Mood</h2>
+                </div>
+                <div className="category-playlists-grid">
+                  {curatedPlaylists.map(p => (
+                    <div key={p.id} className="category-card" onClick={() => handleCategorySearch(p)}>
+                      <span className="category-card-icon">{p.icon}</span>
+                      <span className="category-card-label">{p.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
           )}
 
@@ -1272,19 +1287,6 @@ export default function App() {
 
           {activeTab === 'explore' && (
             <div className="explore-view">
-              <form className="explore-search-form" onSubmit={handleSearchSubmit}>
-                <input
-                  type="text"
-                  className="explore-search-input"
-                  placeholder="Search songs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <button type="submit" className="explore-search-btn">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                </button>
-              </form>
-
               {showTrending ? (
                 <>
                   <div className="explore-header-row">
@@ -1336,7 +1338,18 @@ export default function App() {
                   {isSearching ? (
                     <div className="explore-loading"><div className="spinner" /></div>
                   ) : searchResults.length > 0 ? (
-                    <div className="explore-grid">
+                    <>
+                      {getMatchingPlaylists(searchQuery).length > 0 && getMatchingPlaylists(searchQuery).map(pl => (
+                        <div key={pl.id} className="search-playlist-suggestion" onClick={() => handleCategorySearch(pl)}>
+                          <span className="search-playlist-suggestion-icon">{pl.icon}</span>
+                          <div className="search-playlist-suggestion-info">
+                            <div className="search-playlist-suggestion-title">{pl.name} Playlist</div>
+                            <div className="search-playlist-suggestion-desc">Listen to top {pl.name.toLowerCase()} songs</div>
+                          </div>
+                          <ChevronRight size={20} className="search-playlist-suggestion-arrow" />
+                        </div>
+                      ))}
+                      <div className="explore-grid">
                       {searchResults.map(result => (
                         <div key={result.id}
                           className="explore-card"
@@ -1363,6 +1376,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                    </>
                   ) : (
                     <p className="explore-empty">No results found for "{searchQuery}"</p>
                   )}
