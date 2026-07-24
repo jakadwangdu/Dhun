@@ -429,6 +429,9 @@ export default function App() {
         `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&videoCategoryId=10&regionCode=US&maxResults=20&key=${YOUTUBE_API_KEY}`
       )
       const data = await response.json()
+      if (data.error) {
+        throw new Error(data.error.message || 'YouTube API request failed')
+      }
       const songs = (data.items || []).map(item => ({
         id: item.id,
         title: item.snippet.title,
@@ -438,7 +441,7 @@ export default function App() {
       setTrendingSongs(songs)
     } catch (err) {
       setErrorMsg("Could not load trending songs")
-      setTimeout(() => setErrorMsg(null), 4000)
+      setTimeout(() => setErrorMsg(null), 6000)
     } finally {
       setIsLoadingTrending(false)
     }
@@ -486,6 +489,12 @@ export default function App() {
 
   const searchYouTube = async (query) => {
     if (!query.trim()) return
+    if (!YOUTUBE_API_KEY) {
+      setErrorMsg('Search unavailable: YouTube API key not configured')
+      setTimeout(() => setErrorMsg(null), 6000)
+      setIsSearching(false)
+      return
+    }
     setIsSearching(true)
     setErrorMsg(null)
     try {
@@ -493,6 +502,9 @@ export default function App() {
         `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=10`
       )
       const data = await response.json()
+      if (data.error) {
+        throw new Error(data.error.message || 'YouTube API request failed')
+      }
       const results = (data.items || [])
         .filter(item => item.id?.videoId)
         .map(item => ({
@@ -505,7 +517,7 @@ export default function App() {
       setShowTrending(false)
     } catch (err) {
       setErrorMsg(`Search failed: ${err.message}`)
-      setTimeout(() => setErrorMsg(null), 4000)
+      setTimeout(() => setErrorMsg(null), 6000)
     } finally {
       setIsSearching(false)
     }
@@ -527,9 +539,13 @@ export default function App() {
   }
 
   const handleCategorySearch = (playlist) => {
+    if (!YOUTUBE_API_KEY) {
+      setErrorMsg('Search unavailable: YouTube API key not configured')
+      setTimeout(() => setErrorMsg(null), 6000)
+      return
+    }
     setHeaderSearchQuery(playlist.name)
     setSearchQuery(playlist.name)
-    setIsSearching(true)
     searchYouTube(playlist.query || playlist.name)
     setShowHeaderSearch(false)
     navigateTo('explore')
@@ -607,6 +623,10 @@ export default function App() {
       setHeaderSearchResults([])
       return
     }
+    if (!YOUTUBE_API_KEY) {
+      setHeaderSearchResults([])
+      return
+    }
     setIsHeaderSearching(true)
     headerSearchTimeout.current = setTimeout(async () => {
       try {
@@ -614,6 +634,9 @@ export default function App() {
           `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=5`
         )
         const data = await response.json()
+        if (data.error) {
+          throw new Error(data.error.message || 'YouTube API request failed')
+        }
         const results = (data.items || [])
           .filter(item => item.id?.videoId)
           .map(item => ({
@@ -625,19 +648,25 @@ export default function App() {
         setHeaderSearchResults(results)
       } catch {
         setHeaderSearchResults([])
+        setErrorMsg('Search unavailable right now')
+        setTimeout(() => setErrorMsg(null), 6000)
       } finally {
         setIsHeaderSearching(false)
       }
     }, 400)
   }
 
-  const handleHeaderSearchSubmit = () => {
+  const handleHeaderSearchSubmit = async () => {
     if (!headerSearchQuery.trim()) return
+    if (!YOUTUBE_API_KEY) {
+      setErrorMsg('Search unavailable: YouTube API key not configured')
+      setTimeout(() => setErrorMsg(null), 6000)
+      return
+    }
     setSearchQuery(headerSearchQuery)
-    setIsSearching(true)
-    searchYouTube(headerSearchQuery)
     setShowHeaderSearch(false)
     navigateTo('explore')
+    await searchYouTube(headerSearchQuery)
   }
 
   const curatedPlaylists = [
@@ -674,6 +703,9 @@ const fetchSimilarSongs = async (track) => {
         `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=7`
       )
       const data = await response.json()
+      if (data.error) {
+        throw new Error(data.error.message || 'YouTube API request failed')
+      }
       const results = (data.items || [])
         .filter(item => item.id?.videoId)
         .map(item => ({
