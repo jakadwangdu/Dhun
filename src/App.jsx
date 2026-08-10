@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee } from 'lucide-react'
 import './App.css'
+import newLogo from './newlogo.png'
+import qrCode from '../qr.png'
 
-const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
+const YOUTUBE_API_BASE = '/api/youtube'
 
 const fetchWithRetry = async (url, options) => {
   let delay = 1000
@@ -93,6 +95,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : []
   })
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState(null)
+  const [showCoffeeModal, setShowCoffeeModal] = useState(false)
   const [ambientColors, setAmbientColors] = useState([])
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -106,6 +109,9 @@ export default function App() {
   const [isLoadingRecommended, setIsLoadingRecommended] = useState(false)
   const [quickPicks, setQuickPicks] = useState([])
   const [recommendedPlaylists, setRecommendedPlaylists] = useState([])
+  const [indianRecs, setIndianRecs] = useState([])
+  const [isLoadingIndianRecs, setIsLoadingIndianRecs] = useState(false)
+  const [indianRecCategories, setIndianRecCategories] = useState([])
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -421,12 +427,12 @@ export default function App() {
   }
 
   const fetchTrendingSongs = async () => {
-    if (trendingFetched.current || !YOUTUBE_API_KEY) return
+    if (trendingFetched.current) return
     setIsLoadingTrending(true)
     trendingFetched.current = true
     try {
       const response = await fetchWithRetry(
-        `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&videoCategoryId=10&regionCode=US&maxResults=20&key=${YOUTUBE_API_KEY}`
+        `${YOUTUBE_API_BASE}/videos?part=snippet&chart=mostPopular&videoCategoryId=10&maxResults=20`
       )
       const data = await response.json()
       if (data.error) {
@@ -489,17 +495,11 @@ export default function App() {
 
   const searchYouTube = async (query) => {
     if (!query.trim()) return
-    if (!YOUTUBE_API_KEY) {
-      setErrorMsg('Search unavailable: YouTube API key not configured')
-      setTimeout(() => setErrorMsg(null), 6000)
-      setIsSearching(false)
-      return
-    }
     setIsSearching(true)
     setErrorMsg(null)
     try {
       const response = await fetchWithRetry(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=10`
+        `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=10`
       )
       const data = await response.json()
       if (data.error) {
@@ -538,18 +538,7 @@ export default function App() {
     actuallyPlay(track)
   }
 
-  const handleCategorySearch = (playlist) => {
-    if (!YOUTUBE_API_KEY) {
-      setErrorMsg('Search unavailable: YouTube API key not configured')
-      setTimeout(() => setErrorMsg(null), 6000)
-      return
-    }
-    setHeaderSearchQuery(playlist.name)
-    setSearchQuery(playlist.name)
-    searchYouTube(playlist.query || playlist.name)
-    setShowHeaderSearch(false)
-    navigateTo('explore')
-  }
+
 
   const handleBackFromSearch = () => {
     setShowTrending(true)
@@ -623,15 +612,11 @@ export default function App() {
       setHeaderSearchResults([])
       return
     }
-    if (!YOUTUBE_API_KEY) {
-      setHeaderSearchResults([])
-      return
-    }
     setIsHeaderSearching(true)
     headerSearchTimeout.current = setTimeout(async () => {
       try {
         const response = await fetchWithRetry(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=5`
+          `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5`
         )
         const data = await response.json()
         if (data.error) {
@@ -658,49 +643,21 @@ export default function App() {
 
   const handleHeaderSearchSubmit = async () => {
     if (!headerSearchQuery.trim()) return
-    if (!YOUTUBE_API_KEY) {
-      setErrorMsg('Search unavailable: YouTube API key not configured')
-      setTimeout(() => setErrorMsg(null), 6000)
-      return
-    }
     setSearchQuery(headerSearchQuery)
     setShowHeaderSearch(false)
     navigateTo('explore')
     await searchYouTube(headerSearchQuery)
   }
 
-  const curatedPlaylists = [
-  { id: 'gym', name: 'GYM', query: 'workout music gym', icon: '💪' },
-  { id: 'bollywood', name: 'Bollywood', query: 'bollywood dance hits 2025', icon: '🎬' },
-  { id: 'fast', name: 'Fast', query: 'fast energetic workout music', icon: '⚡' },
-  { id: 'funk', name: 'Funk', query: 'funk disco grove', icon: '🕺' },
-  { id: 'hiphop', name: 'Hip Hop', query: 'hip hop rap bangers', icon: '🎤' },
-  { id: 'chill', name: 'Chill', query: 'chill lofi relaxing', icon: '🌊' },
-  { id: 'rnb', name: 'R&B', query: 'rnb soul vibes', icon: '🎸' },
-  { id: 'rock', name: 'Rock', query: 'rock alternative', icon: '🤘' },
-  { id: 'jazz', name: 'Jazz', query: 'jazz smooth', icon: '🎷' },
-  { id: 'edm', name: 'EDM', query: 'edm electronic dance', icon: '🔊' },
-  { id: 'party', name: 'Party', query: 'party dance hits', icon: '🎉' },
-  { id: 'sad', name: 'Sad', query: 'sad emotional songs', icon: '😢' },
-]
 
-const getMatchingPlaylists = (query) => {
-  if (!query || !query.trim()) return []
-  const q = query.toLowerCase().trim()
-  return curatedPlaylists.filter(p =>
-    p.name.toLowerCase().includes(q) ||
-    p.query.toLowerCase().includes(q) ||
-    q.includes(p.name.toLowerCase())
-  )
-}
 
-const fetchSimilarSongs = async (track) => {
-    if (!track || !YOUTUBE_API_KEY) return
+  const fetchSimilarSongs = async (track) => {
+    if (!track) return
     setIsLoadingRecommended(true)
     try {
       const query = `${track.title} ${track.artist} music`
       const response = await fetchWithRetry(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=7`
+        `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=7`
       )
       const data = await response.json()
       if (data.error) {
@@ -721,6 +678,59 @@ const fetchSimilarSongs = async (track) => {
       setIsLoadingRecommended(false)
     }
   }
+
+  const fetchGenZRecommendations = async () => {
+    setIsLoadingIndianRecs(true)
+    const categories = [
+      { name: '📱 TikTok Viral', query: 'tiktok viral songs 2025 2026 trending', color: '#ff0050' },
+      { name: '🔥 Phonk Drill', query: 'phonk drill music 2025 aggressive', color: '#8b5cf6' },
+      { name: '🌊 Afrobeats Wave', query: 'afrobeats hits 2025 2026 trending', color: '#f59e0b' },
+      { name: '💀 Hyperpop Rage', query: 'hyperpop digicore 2025 experimental', color: '#06b6d4' },
+      { name: '🎧 UK Drill', query: 'uk drill 2025 hits trending', color: '#ef4444' },
+      { name: '🌴 Reggaeton Latino', query: 'reggaeton latin hits 2025 urbano', color: '#10b981' },
+      { name: '🎵 Lo-Fi Chill', query: 'lofi hip hop chill beats 2025 study', color: '#6366f1' },
+      { name: '🎤 Rap Underground', query: 'underground rap hip hop 2025 new', color: '#ec4899' },
+    ]
+
+    try {
+      const categoryPromises = categories.map(async (cat) => {
+        try {
+          const response = await fetchWithRetry(
+            `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(cat.query)}&type=video&maxResults=10`
+          )
+          const data = await response.json()
+          if (data.error) throw new Error(data.error.message)
+          const songs = (data.items || [])
+            .filter(item => item.id?.videoId)
+            .map(item => ({
+              id: item.id.videoId,
+              title: item.snippet.title,
+              artist: item.snippet.channelTitle,
+              thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
+            }))
+          return { ...cat, songs: songs.slice(0, 6) }
+        } catch {
+          return { ...cat, songs: [] }
+        }
+      })
+
+      const results = await Promise.all(categoryPromises)
+      const filtered = results.filter(c => c.songs.length >= 3)
+      setIndianRecCategories(filtered)
+
+      const allSongs = filtered.flatMap(c => c.songs)
+      setIndianRecs(allSongs.slice(0, 12))
+    } catch {
+      setIndianRecCategories([])
+      setIndianRecs([])
+    } finally {
+      setIsLoadingIndianRecs(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchGenZRecommendations()
+  }, [])
 
   const getRediscoverSongs = useCallback(() => {
     const recentIds = new Set(recentlyPlayed.slice(0, 10).map(s => s.id))
@@ -847,6 +857,13 @@ const fetchSimilarSongs = async (track) => {
     }
   }, [currentTrack, extractAmbientColors])
 
+  const getTimeOfDay = () => {
+    const h = new Date().getHours()
+    if (h < 12) return 'morning'
+    if (h < 17) return 'afternoon'
+    return 'evening'
+  }
+
   const rediscoverSongs = getRediscoverSongs()
 
   const handlePlayQuickPick = (song) => {
@@ -878,6 +895,14 @@ const fetchSimilarSongs = async (track) => {
         `
       } : {}}
     >
+      <div className="bg-decoration" aria-hidden="true">
+        <div className="bg-blob bg-blob-1" />
+        <div className="bg-blob bg-blob-2" />
+        <div className="bg-blob bg-blob-3" />
+        <div className="bg-blob bg-blob-4" />
+        <div className="bg-blob bg-blob-5" />
+      </div>
+
       <div className="app-shell">
         <div className="youtube-player-wrapper"><div id="youtube-player-container"></div></div>
 
@@ -952,43 +977,244 @@ const fetchSimilarSongs = async (track) => {
           {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
 
           {activeTab === 'welcome' && (
-            <div className="welcome-view">
-              {quickPicks.length > 0 && (
-                <section className="home-section">
-                  <div className="home-section-header">
-                    <h2 className="home-section-title">Quick Picks</h2>
-                  </div>
-                  <div className="quick-picks-scroll">
-                    <div className="quick-picks-track">
-                      {quickPicks.map(song => (
-                        <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
-                          <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
-                          <div className="quick-pick-info">
-                            <p className="quick-pick-title">{song.title}</p>
-                            <p className="quick-pick-artist">{song.artist}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              )}
+             <div className="welcome-view">
+               <section className="home-hero">
+                 <div className="home-hero-bg" aria-hidden="true">
+                   <div className="home-hero-blob home-hero-blob-1" />
+                   <div className="home-hero-blob home-hero-blob-2" />
+                 </div>
+                 <div className="home-hero-content">
+                   <div className="home-hero-logo-wrap">
+                     <img src={newLogo} alt="Dhun" className="home-hero-logo" />
+                   </div>
+                   <div className="home-hero-text">
+                     <p className="home-hero-greeting">Good {getTimeOfDay()}</p>
+                     <h1 className="home-hero-title">Dhun</h1>
+                     <p className="home-hero-subtitle">Your music, distilled</p>
+                   </div>
+                 </div>
+               </section>
 
-              <section className="home-section">
-                <div className="home-section-header">
-                  <h2 className="home-section-title">Browse by Mood</h2>
-                </div>
-                <div className="category-playlists-grid">
-                  {curatedPlaylists.map(p => (
-                    <div key={p.id} className="category-card" onClick={() => handleCategorySearch(p)}>
-                      <span className="category-card-icon">{p.icon}</span>
-                      <span className="category-card-label">{p.name}</span>
+                {playlists.length > 0 && (
+                  <section className="home-section">
+                    <div className="home-section-header">
+                      <div className="home-section-title-wrap">
+                        <ListMusic size={18} className="home-section-icon" />
+                        <h2 className="home-section-title">Your Playlists</h2>
+                      </div>
+                      <button className="home-section-link" onClick={() => navigateTo('playlists')}>
+                        See all
+                      </button>
                     </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
+                    <div className="home-playlists-scroll">
+                      <div className="home-playlists-track">
+                        {likedSongs.length > 0 && (
+                          <div className="home-playlist-card" onClick={() => { setSelectedPlaylistId('liked'); navigateTo('playlists') }}>
+                            <div className="home-playlist-cover home-playlist-liked">
+                              <Heart size={20} fill="currentColor" />
+                            </div>
+                            <p className="home-playlist-name">Liked Songs</p>
+                            <span className="home-playlist-count">{likedSongs.length}</span>
+                          </div>
+                        )}
+                        {playlists.map(p => (
+                          <div key={p.id} className="home-playlist-card" onClick={() => { setSelectedPlaylistId(p.id); navigateTo('playlists') }}>
+                            <div className="home-playlist-cover">
+                              {p.songs.length > 0 ? (
+                                <div className="home-playlist-collage">
+                                  {p.songs.slice(0, 4).map((s, i) => (
+                                    <img key={i} src={s.thumbnail} alt="" loading="lazy" />
+                                  ))}
+                                </div>
+                              ) : (
+                                <ListMusic size={20} />
+                              )}
+                            </div>
+                            <p className="home-playlist-name">{p.name}</p>
+                            <span className="home-playlist-count">{p.songs.length}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {quickPicks.length > 0 && (
+                  <section className="home-section">
+                    <div className="home-section-header">
+                      <div className="home-section-title-wrap">
+                        <Sparkles size={18} className="home-section-icon" />
+                        <h2 className="home-section-title">Quick Picks</h2>
+                      </div>
+                      <span className="home-section-subtitle">Based on your taste</span>
+                    </div>
+                    <div className="quick-picks-scroll">
+                      <div className="quick-picks-track">
+                        {quickPicks.map((song, idx) => (
+                          <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
+                            <div className="quick-pick-thumb-wrap">
+                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                              <div className="quick-pick-overlay">
+                                <div className="quick-pick-play-btn">
+                                  <PlayIcon size={18} fill="currentColor" />
+                                </div>
+                              </div>
+                              <div className="quick-pick-rank">{idx + 1}</div>
+                            </div>
+                            <div className="quick-pick-info">
+                              <p className="quick-pick-title">{song.title}</p>
+                              <p className="quick-pick-artist">{song.artist}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="home-section home-section-recs">
+                  <div className="home-section-header">
+                    <div className="home-section-title-wrap">
+                      <h2 className="home-section-title">Trending Now</h2>
+                    </div>
+                    <span className="home-section-tag">Gen-Z Picks</span>
+                  </div>
+
+                  {isLoadingIndianRecs ? (
+                    <div className="home-loading">
+                      <div className="spinner" />
+                      <span>Finding your perfect mix...</span>
+                    </div>
+                  ) : indianRecCategories.length > 0 ? (
+                    <>
+                      <div className="rec-categories-grid">
+                        {indianRecCategories.slice(0, 6).map((category, catIdx) => (
+                          <div
+                            key={catIdx}
+                            className="rec-category-card"
+                            style={{ '--cat-color': category.color || '#8b5cf6' }}
+                            onClick={() => {
+                              if (category.songs.length === 0) return
+                              addToRecent(category.songs[0])
+                              setQueue(category.songs)
+                              setCurrentTrackIndex(0)
+                              navigateTo('player')
+                              actuallyPlay(category.songs[0])
+                            }}
+                          >
+                            <div className="rec-category-collage">
+                              <div className="rec-category-collage-inner">
+                                {category.songs.slice(0, 4).map((song, sIdx) => (
+                                  <div key={sIdx} className="rec-category-collage-item">
+                                    <img src={song.thumbnail} alt="" loading="lazy" />
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="rec-category-collage-overlay">
+                                <div className="rec-category-play-btn">
+                                  <PlayIcon size={20} fill="currentColor" />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="rec-category-info">
+                              <h3 className="rec-category-name">{category.name}</h3>
+                              <p className="rec-category-meta">{category.songs.length} songs</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rec-expanded-songs">
+                        {indianRecCategories.slice(0, 3).map((category, catIdx) => (
+                          <div key={catIdx} className="rec-song-group">
+                            <div className="rec-song-group-header">
+                              <div className="rec-song-group-color" style={{ background: category.color || '#8b5cf6' }} />
+                              <h4 className="rec-song-group-title">{category.name}</h4>
+                            </div>
+                            <div className="rec-song-list">
+                              {category.songs.slice(0, 5).map((song, songIdx) => (
+                                <div
+                                  key={song.id}
+                                  className="rec-song-item"
+                                  onClick={() => {
+                                    addToRecent(song)
+                                    setQueue(category.songs)
+                                    setCurrentTrackIndex(songIdx)
+                                    navigateTo('player')
+                                    actuallyPlay(song)
+                                  }}
+                                  onPointerDown={() => handlePointerDown(song)}
+                                  onPointerUp={handlePointerUp}
+                                  onPointerLeave={handlePointerLeave}
+                                >
+                                  <img src={song.thumbnail} alt="" className="rec-song-thumb" />
+                                  <div className="rec-song-details">
+                                    <p className="rec-song-title">{song.title}</p>
+                                    <p className="rec-song-artist">{song.artist}</p>
+                                  </div>
+                                  <div className="rec-song-actions">
+                                    <button
+                                      className={`rec-song-like-btn${isLiked(song) ? ' liked' : ''}`}
+                                      onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                                      aria-label={isLiked(song) ? 'Unlike' : 'Like'}
+                                    >
+                                      <Heart size={16} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                                    </button>
+                                    <div className="rec-song-play-wrap">
+                                      <PlayIcon size={14} fill="currentColor" />
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="home-empty">
+                      <div className="home-empty-icon">
+                        <Music2 size={32} />
+                      </div>
+                      <p>No recommendations yet</p>
+                      <span>Search for songs to get personalized picks</span>
+                    </div>
+                  )}
+                </section>
+
+               {rediscoverSongs.length > 0 && (
+                 <section className="home-section">
+                   <div className="home-section-header">
+                     <div className="home-section-title-wrap">
+                       <Clock size={18} className="home-section-icon" />
+                       <h2 className="home-section-title">Rediscover</h2>
+                     </div>
+                     <span className="home-section-subtitle">Songs you loved before</span>
+                   </div>
+                   <div className="quick-picks-scroll">
+                     <div className="quick-picks-track">
+                       {rediscoverSongs.map((song) => (
+                         <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
+                           <div className="quick-pick-thumb-wrap">
+                             <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                             <div className="quick-pick-overlay">
+                               <div className="quick-pick-play-btn">
+                                 <PlayIcon size={18} fill="currentColor" />
+                               </div>
+                             </div>
+                           </div>
+                           <div className="quick-pick-info">
+                             <p className="quick-pick-title">{song.title}</p>
+                             <p className="quick-pick-artist">{song.artist}</p>
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 </section>
+               )}
+             </div>
+           )}
 
           {activeTab === 'player' && (
             <div className="player-view">
@@ -1322,7 +1548,7 @@ const fetchSimilarSongs = async (track) => {
               {showTrending ? (
                 <>
                   <div className="explore-header-row">
-                    <h2 className="explore-title">Trending Now</h2>
+                    <h2 className="explore-title">Trending Worldwide</h2>
                   </div>
                   {isLoadingTrending ? (
                     <div className="explore-loading"><div className="spinner" /></div>
@@ -1371,16 +1597,7 @@ const fetchSimilarSongs = async (track) => {
                     <div className="explore-loading"><div className="spinner" /></div>
                   ) : searchResults.length > 0 ? (
                     <>
-                      {getMatchingPlaylists(searchQuery).length > 0 && getMatchingPlaylists(searchQuery).map(pl => (
-                        <div key={pl.id} className="search-playlist-suggestion" onClick={() => handleCategorySearch(pl)}>
-                          <span className="search-playlist-suggestion-icon">{pl.icon}</span>
-                          <div className="search-playlist-suggestion-info">
-                            <div className="search-playlist-suggestion-title">{pl.name} Playlist</div>
-                            <div className="search-playlist-suggestion-desc">Listen to top {pl.name.toLowerCase()} songs</div>
-                          </div>
-                          <ChevronRight size={20} className="search-playlist-suggestion-arrow" />
-                        </div>
-                      ))}
+
                       <div className="explore-grid">
                       {searchResults.map(result => (
                         <div key={result.id}
@@ -1454,8 +1671,32 @@ const fetchSimilarSongs = async (track) => {
             <button onClick={() => navigateTo('playlists')} className={`nav-btn${activeTab === 'playlists' ? ' active' : ''}`}>
               <ListMusic size={24} />
             </button>
+            <button onClick={() => setShowCoffeeModal(true)} className="nav-btn nav-btn-coffee" title="Buy me a coffee">
+              <Coffee size={24} />
+            </button>
           </div>
         </nav>
+
+        {showCoffeeModal && (
+          <div className="coffee-modal-overlay" onClick={() => setShowCoffeeModal(false)}>
+            <div className="coffee-modal" onClick={(e) => e.stopPropagation()}>
+              <button className="coffee-modal-close" onClick={() => setShowCoffeeModal(false)}>
+                <ChevronLeft size={20} />
+              </button>
+              <div className="coffee-modal-content">
+                <div className="coffee-modal-icon">
+                  <Coffee size={32} />
+                </div>
+                <h3 className="coffee-modal-title">Buy me a coffee</h3>
+                <p className="coffee-modal-subtitle">Support the developer</p>
+                <div className="coffee-qr-wrap">
+                  <img src={qrCode} alt="Scan to pay" className="coffee-qr-img" />
+                </div>
+                <p className="coffee-modal-hint">Scan this QR code to send payment</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
