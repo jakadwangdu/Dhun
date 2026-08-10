@@ -297,6 +297,31 @@
 }
 .header-search-see-all:hover { background: var(--bg-secondary); }
 
+/* YouTube Blocked Banner */
+.yt-blocked-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  border: 1px solid #fbbf24;
+  animation: bannerSlide 0.4s var(--ease-out-expo);
+}
+.dark .yt-blocked-banner {
+  background: linear-gradient(135deg, #422006, #713f12);
+  color: #fde68a;
+  border-color: #b45309;
+}
+@keyframes bannerSlide {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Main */
 .app-shell { touch-action: pan-y pinch-zoom; }
 .app-main {

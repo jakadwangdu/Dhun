@@ -180,6 +180,11 @@ export default function App() {
     if (!window.YT) {
       const tag = document.createElement('script')
       tag.src = 'https://www.youtube.com/iframe_api'
+      tag.async = true
+      tag.onerror = () => {
+        console.warn('YouTube API failed to load (possibly blocked by ad blocker)')
+        setPlayerError('YouTube player blocked. Please disable ad blocker.')
+      }
       const firstScriptTag = document.getElementsByTagName('script')[0]
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
       window.onYouTubeIframeAPIReady = () => setIsYtReady(true)
@@ -191,12 +196,16 @@ export default function App() {
 
   useEffect(() => {
     if (isYtReady && !player) {
+      const origin = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? ''
+        : `&origin=${encodeURIComponent(window.location.origin)}`
       const ytPlayer = new window.YT.Player('youtube-player-container', {
         height: '240', width: '320',
         videoId: '',
         playerVars: {
           autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
-          modestbranding: 1, playsinline: 1, iv_load_policy: 3
+          modestbranding: 1, playsinline: 1, iv_load_policy: 3,
+          enablejsapi: 1, widgetid: 1, origin: encodeURIComponent(window.location.origin)
         },
         events: {
           onReady: (event) => {
@@ -904,7 +913,7 @@ export default function App() {
       </div>
 
       <div className="app-shell">
-        <div className="youtube-player-wrapper"><div id="youtube-player-container"></div></div>
+        <div className="youtube-player-wrapper"><div id="youtube-player-container" data-referrerpolicy="no-referrer-when-downgrade"></div></div>
 
         <header className={`app-header${showHeaderSearch ? ' header-search-active' : ''}`}>
           <button onClick={handleHeaderBack} className="icon-btn back-btn">
@@ -975,6 +984,12 @@ export default function App() {
         <main className="app-main">
           {errorMsg && <div className="error-toast">{errorMsg}</div>}
           {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
+          {!isYtReady && playerErrorState && (
+            <div className="yt-blocked-banner">
+              <Music2 size={20} />
+              <span>YouTube blocked by ad blocker. Please disable it for music playback.</span>
+            </div>
+          )}
 
           {activeTab === 'welcome' && (
              <div className="welcome-view">
