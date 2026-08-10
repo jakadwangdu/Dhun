@@ -4,7 +4,14 @@ import './App.css'
 import newLogo from './newlogo.png'
 import qrCode from '../qr.png'
 
-const YOUTUBE_API_BASE = '/api/youtube'
+const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
+const YOUTUBE_API_BASE = import.meta.env.DEV ? '/api/youtube' : 'https://www.googleapis.com/youtube/v3'
+
+const buildApiUrl = (endpoint) => {
+  if (import.meta.env.DEV) return `${YOUTUBE_API_BASE}${endpoint}`
+  const separator = endpoint.includes('?') ? '&' : '?'
+  return `${YOUTUBE_API_BASE}${endpoint}${separator}key=${YOUTUBE_API_KEY}`
+}
 
 const fetchWithRetry = async (url, options) => {
   let delay = 1000
@@ -441,7 +448,7 @@ export default function App() {
     trendingFetched.current = true
     try {
       const response = await fetchWithRetry(
-        `${YOUTUBE_API_BASE}/videos?part=snippet&chart=mostPopular&videoCategoryId=10&maxResults=20`
+        buildApiUrl('/videos?part=snippet&chart=mostPopular&videoCategoryId=10&maxResults=20')
       )
       const data = await response.json()
       if (data.error) {
@@ -508,7 +515,7 @@ export default function App() {
     setErrorMsg(null)
     try {
       const response = await fetchWithRetry(
-        `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=10`
+        buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=10`)
       )
       const data = await response.json()
       if (data.error) {
@@ -625,7 +632,7 @@ export default function App() {
     headerSearchTimeout.current = setTimeout(async () => {
       try {
         const response = await fetchWithRetry(
-          `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5`
+          buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5`)
         )
         const data = await response.json()
         if (data.error) {
@@ -666,7 +673,7 @@ export default function App() {
     try {
       const query = `${track.title} ${track.artist} music`
       const response = await fetchWithRetry(
-        `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=7`
+        buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=7`)
       )
       const data = await response.json()
       if (data.error) {
@@ -705,7 +712,7 @@ export default function App() {
       const categoryPromises = categories.map(async (cat) => {
         try {
           const response = await fetchWithRetry(
-            `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(cat.query)}&type=video&maxResults=10`
+            buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(cat.query)}&type=video&maxResults=10`)
           )
           const data = await response.json()
           if (data.error) throw new Error(data.error.message)
