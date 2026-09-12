@@ -185,13 +185,28 @@ input, pre {
 
   .sidebar-brand {
     cursor: pointer;
-    margin-bottom: 40px;
+    margin-bottom: 36px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+  }
+
+  .sidebar-brand-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #000;
+    border: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 
   .sidebar-brand-text {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
   }
 
   .sidebar-title {
@@ -442,6 +457,46 @@ input, pre {
   .app-header {
     height: 64px;
     padding: 0 40px;
+  }
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.header-brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #000;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.header-brand-title {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+  line-height: 1;
+}
+
+@media (min-width: 1024px) {
+  .header-brand-mark {
+    display: none;
   }
 }
 

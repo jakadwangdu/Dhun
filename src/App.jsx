@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X } from 'lucide-react'
 import './App.css'
-import newLogo from './newlogo.png'
+import logoVector from './logo_vector.svg'
 import qrCode from '../qr.png'
 
 const DEFAULT_YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
@@ -1084,6 +1084,7 @@ export default function App() {
         {/* Desktop Editorial Sidebar (Laptops & Desktops >= 1024px) */}
         <aside className="desktop-sidebar">
           <div className="sidebar-brand" onClick={() => navigateTo('welcome')}>
+            <img src={logoVector} alt="Dhun Logo" className="sidebar-brand-logo" />
             <div className="sidebar-brand-text">
               <h1 className="sidebar-title">Dhun</h1>
               <span className="sidebar-edition">Audio Edition / Vol. 04</span>
@@ -1162,9 +1163,15 @@ export default function App() {
         {/* Main Content Viewport */}
         <div className="app-main-area">
           <header className={`app-header${showHeaderSearch ? ' header-search-active' : ''}`}>
-            <button onClick={handleHeaderBack} className="icon-btn back-btn" title="Go back">
-              <ChevronLeft size={20} />
-            </button>
+            <div className="header-left">
+              <button onClick={handleHeaderBack} className="icon-btn back-btn" title="Go back">
+                <ChevronLeft size={20} />
+              </button>
+              <div className="header-brand-mark" onClick={() => navigateTo('welcome')} role="button" tabIndex={0}>
+                <img src={logoVector} alt="Dhun Logo" className="header-brand-logo" />
+                <span className="header-brand-title">Dhun</span>
+              </div>
+            </div>
 
             <div className={`header-search-container${showHeaderSearch ? ' expanded' : ''}`}>
               <button
