@@ -1,8 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X } from 'lucide-react'
 import './App.css'
+import newLogo from './newlogo.png'
+import qrCode from '../qr.png'
 
-const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
+const DEFAULT_YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
+const YOUTUBE_API_BASE = import.meta.env.DEV ? '/api/youtube' : 'https://www.googleapis.com/youtube/v3'
+
+const getApiKey = () => {
+  const stored = localStorage.getItem('dhun_youtube_api_key')
+  return stored || DEFAULT_YOUTUBE_API_KEY
+}
+
+const buildApiUrl = (endpoint) => {
+  if (import.meta.env.DEV) return `${YOUTUBE_API_BASE}${endpoint}`
+  const separator = endpoint.includes('?') ? '&' : '?'
+  return `${YOUTUBE_API_BASE}${endpoint}${separator}key=${getApiKey()}`
+}
 
 const fetchWithRetry = async (url, options) => {
   let delay = 1000
@@ -48,8 +62,6 @@ function loadVideoSafely(player, videoId) {
 
 let setPlayerError = () => {}
 
-const TABS = ['welcome', 'explore', 'player', 'playlists']
-
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [isYtReady, setIsYtReady] = useState(false)
@@ -93,8 +105,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : []
   })
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState(null)
-  const [ambientColors, setAmbientColors] = useState([])
+  const [showCoffeeModal, setShowCoffeeModal] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [settingsApiKey, setSettingsApiKey] = useState('')
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('dhun_youtube_api_key') || '')
 
   const [repeatMode, setRepeatMode] = useState('none')
   const [headerSearchQuery, setHeaderSearchQuery] = useState('')
@@ -106,6 +121,9 @@ export default function App() {
   const [isLoadingRecommended, setIsLoadingRecommended] = useState(false)
   const [quickPicks, setQuickPicks] = useState([])
   const [recommendedPlaylists, setRecommendedPlaylists] = useState([])
+  const [indianRecs, setIndianRecs] = useState([])
+  const [isLoadingIndianRecs, setIsLoadingIndianRecs] = useState(false)
+  const [indianRecCategories, setIndianRecCategories] = useState([])
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -129,28 +147,70 @@ export default function App() {
   }
 
   const handleTrackEndRef = useRef(() => {})
+  const handleAutoFallbackRef = useRef(() => {})
   const darkModeRef = useRef(false)
+  const currentTrackRef = useRef(null)
+  const failedEmbedTrackIds = useRef(new Set())
 
   useEffect(() => { repeatModeRef.current = repeatMode }, [repeatMode])
   useEffect(() => { queueRef.current = queue }, [queue])
   useEffect(() => { darkModeRef.current = isDarkMode }, [isDarkMode])
   useEffect(() => { currentIndexRef.current = currentTrackIndex }, [currentTrackIndex])
+  useEffect(() => { currentTrackRef.current = queue[currentTrackIndex] || null }, [queue, currentTrackIndex])
+
+  const enterFullscreen = useCallback(() => {
+    try {
+      const docEl = document.documentElement
+      const requestFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen
+      if (!document.fullscreenElement && requestFs) {
+        requestFs.call(docEl).catch(() => {})
+      }
+    } catch (e) {}
+  }, [])
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
-      setIsFullscreen(true)
-    } else {
-      document.exitFullscreen()
-      setIsFullscreen(false)
-    }
+    try {
+      if (!document.fullscreenElement) {
+        enterFullscreen()
+      } else {
+        const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen
+        if (exitFs) {
+          exitFs.call(document).catch(() => {})
+        }
+      }
+    } catch (e) {}
   }
 
+  // Set as default to fullscreen: auto-enter immediately and on first user gesture
   useEffect(() => {
-    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    enterFullscreen()
+
+    const handleFirstGesture = () => {
+      enterFullscreen()
+      window.removeEventListener('click', handleFirstGesture)
+      window.removeEventListener('touchstart', handleFirstGesture)
+      window.removeEventListener('pointerdown', handleFirstGesture)
+      window.removeEventListener('keydown', handleFirstGesture)
+    }
+
+    window.addEventListener('click', handleFirstGesture, { once: true })
+    window.addEventListener('touchstart', handleFirstGesture, { once: true, passive: true })
+    window.addEventListener('pointerdown', handleFirstGesture, { once: true, passive: true })
+    window.addEventListener('keydown', handleFirstGesture, { once: true })
+
+    const onFsChange = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement))
     document.addEventListener('fullscreenchange', onFsChange)
-    return () => document.removeEventListener('fullscreenchange', onFsChange)
-  }, [])
+    document.addEventListener('webkitfullscreenchange', onFsChange)
+
+    return () => {
+      window.removeEventListener('click', handleFirstGesture)
+      window.removeEventListener('touchstart', handleFirstGesture)
+      window.removeEventListener('pointerdown', handleFirstGesture)
+      window.removeEventListener('keydown', handleFirstGesture)
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener('webkitfullscreenchange', onFsChange)
+    }
+  }, [enterFullscreen])
 
   useEffect(() => {
     localStorage.setItem('dhun_playlists', JSON.stringify(playlists))
@@ -174,6 +234,11 @@ export default function App() {
     if (!window.YT) {
       const tag = document.createElement('script')
       tag.src = 'https://www.youtube.com/iframe_api'
+      tag.async = true
+      tag.onerror = () => {
+        console.warn('YouTube API failed to load (possibly blocked by ad blocker)')
+        setPlayerError('YouTube player blocked. Please disable ad blocker.')
+      }
       const firstScriptTag = document.getElementsByTagName('script')[0]
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
       window.onYouTubeIframeAPIReady = () => setIsYtReady(true)
@@ -190,7 +255,8 @@ export default function App() {
         videoId: '',
         playerVars: {
           autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
-          modestbranding: 1, playsinline: 1, iv_load_policy: 3
+          modestbranding: 1, playsinline: 1, iv_load_policy: 3,
+          enablejsapi: 1, widgetid: 1, origin: (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http') ? window.location.origin : 'https://www.youtube.com')
         },
         events: {
           onReady: (event) => {
@@ -225,16 +291,17 @@ export default function App() {
           },
           onError: (event) => {
             console.warn('YouTube Player error:', event.data)
-            const errors = {
-              2: 'Invalid video parameter',
-              5: 'HTML5 player error',
-              100: 'Video not found or removed',
-              101: 'Video embedding not allowed by creator',
-              150: 'Video embedding not allowed by creator'
-            }
-            setPlayerError(errors[event.data] || 'Playback error')
             setIsPlaying(false)
             stopProgressTimer()
+            if (event.data === 150 || event.data === 101 || event.data === 100) {
+              handleAutoFallbackRef.current?.(event.data)
+            } else {
+              const errors = {
+                2: 'Invalid video parameter',
+                5: 'HTML5 player error'
+              }
+              setPlayerError(errors[event.data] || 'Playback error')
+            }
           }
         }
       })
@@ -359,6 +426,120 @@ export default function App() {
     } catch (e) {}
   }
 
+  // Android & System Native Notification / Lockscreen Media Controls
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'mediaSession' in navigator && currentTrack) {
+      try {
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: currentTrack.title || 'Dhun Audio',
+          artist: currentTrack.artist || 'Unknown Artist',
+          album: 'Dhun Music',
+          artwork: currentTrack.thumbnail ? [
+            { src: currentTrack.thumbnail, sizes: '512x512', type: 'image/jpeg' },
+            { src: currentTrack.thumbnail, sizes: '256x256', type: 'image/jpeg' }
+          ] : []
+        })
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+
+        navigator.mediaSession.setActionHandler('play', () => {
+          try { playerRef.current?.playVideo() } catch(e) {}
+        })
+        navigator.mediaSession.setActionHandler('pause', () => {
+          try { playerRef.current?.pauseVideo() } catch(e) {}
+        })
+        navigator.mediaSession.setActionHandler('previoustrack', () => handlePrev())
+        navigator.mediaSession.setActionHandler('nexttrack', () => handleNext())
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined) {
+            try {
+              playerRef.current?.seekTo(details.seekTime, true)
+              setCurrentTime(details.seekTime)
+            } catch(e) {}
+          }
+        })
+      } catch(e) {}
+    }
+  }, [currentTrack, isPlaying, handlePrev, handleNext])
+
+  const handleImgError = useCallback((e) => {
+    e.target.onerror = null
+    e.target.src = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60'
+  }, [])
+
+  const cleanSongTitle = useCallback((title) => {
+    if (!title) return ''
+    let t = title
+    t = t.replace(/\(.*?\)/g, ' ')
+    t = t.replace(/\[.*?\]/g, ' ')
+    t = t.replace(/\{.*?\}/g, ' ')
+    t = t.replace(/official\s+(music\s+)?video/gi, ' ')
+    t = t.replace(/official\s+audio/gi, ' ')
+    t = t.replace(/lyric(al)?\s+video/gi, ' ')
+    t = t.replace(/lyrics/gi, ' ')
+    t = t.replace(/full\s+song/gi, ' ')
+    t = t.replace(/visualizer/gi, ' ')
+    t = t.replace(/\b(4k|hd|hq|audio|remastered)\b/gi, ' ')
+    const parts = t.split(/[|/]/)
+    if (parts.length > 1) {
+      t = parts[0]
+    }
+    return t.replace(/\s+/g, ' ').trim()
+  }, [])
+
+  const handleAutoFallback = useCallback(async (errorCode) => {
+    const track = currentTrackRef.current
+    if (!track) return
+
+    if (failedEmbedTrackIds.current.has(track.id)) {
+      setPlayerError('Embedding restricted for this track. Playing next...')
+      setTimeout(() => handleNext(), 1200)
+      return
+    }
+
+    failedEmbedTrackIds.current.add(track.id)
+    setPlayerError('Embedding restricted by creator. Finding alternate stream...')
+
+    try {
+      const clean = cleanSongTitle(track.title)
+      const query = `${clean} audio`
+      const url = buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&maxResults=6`)
+      const res = await fetchWithRetry(url)
+      const data = await res.json()
+      const alt = (data.items || []).find(item => item.id?.videoId && item.id.videoId !== track.id)
+
+      if (alt && alt.id?.videoId) {
+        const altVideoId = alt.id.videoId
+        const altTrack = {
+          ...track,
+          id: altVideoId,
+          title: track.title,
+          thumbnail: alt.snippet?.thumbnails?.high?.url || track.thumbnail
+        }
+
+        setQueue(prev => prev.map((s, idx) => idx === currentIndexRef.current ? altTrack : s))
+        setPlayerError(null)
+
+        const p = playerRef.current
+        if (p) {
+          loadVideoSafely(p, altVideoId)
+          setTimeout(() => {
+            try { p.playVideo() } catch(e) {}
+          }, 300)
+        }
+        return
+      }
+    } catch (e) {
+      console.warn('Auto fallback search failed:', e)
+    }
+
+    setPlayerError('No playable alternative found. Playing next track...')
+    setTimeout(() => {
+      handleNext()
+    }, 1200)
+  }, [cleanSongTitle, handleNext])
+
+  handleAutoFallbackRef.current = handleAutoFallback
+
   const handleRepeatToggle = () => {
     setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')
   }
@@ -421,23 +602,25 @@ export default function App() {
   }
 
   const fetchTrendingSongs = async () => {
-    if (trendingFetched.current || !YOUTUBE_API_KEY) return
+    if (trendingFetched.current) return
     setIsLoadingTrending(true)
     trendingFetched.current = true
     try {
       const response = await fetchWithRetry(
-        `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&videoCategoryId=10&regionCode=US&maxResults=20&key=${YOUTUBE_API_KEY}`
+        buildApiUrl('/videos?part=snippet,status&chart=mostPopular&videoCategoryId=10&maxResults=24')
       )
       const data = await response.json()
       if (data.error) {
         throw new Error(data.error.message || 'YouTube API request failed')
       }
-      const songs = (data.items || []).map(item => ({
-        id: item.id,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
-      }))
+      const songs = (data.items || [])
+        .filter(item => item.status ? item.status.embeddable !== false : true)
+        .map(item => ({
+          id: item.id,
+          title: item.snippet.title,
+          artist: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
+        }))
       setTrendingSongs(songs)
     } catch (err) {
       setErrorMsg("Could not load trending songs")
@@ -448,30 +631,74 @@ export default function App() {
   }
 
   const fetchLyrics = async (artist, title) => {
-    if (!artist || !title) return
+    if (!title) return
     setIsLoadingLyrics(true)
     setLyrics(null)
+
+    const cleanTitle = cleanSongTitle(title)
+    const isGenericArtist = /vevo|records|series|company|channel|official|topic/i.test(artist || '')
+    const cleanArtist = !isGenericArtist ? (artist || '').trim() : ''
+    const searchQuery = cleanArtist ? `${cleanTitle} ${cleanArtist}` : cleanTitle
+
     try {
-      const cleanTitle = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim()
-      const response = await fetch(
-        `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(cleanTitle)}`
-      )
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+      // 1. Primary: lrclib.net search endpoint (unauthenticated, vast library, global + Indian)
+      const res = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(searchQuery)}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data) && data.length > 0) {
+          const match = data.find(item => item.plainLyrics || item.syncedLyrics) || data[0]
+          if (match) {
+            const raw = match.plainLyrics || match.syncedLyrics?.replace(/\[\d+:\d+\.\d+\]\s*/g, '')
+            if (raw && raw.trim().length > 15) {
+              setLyrics(raw.trim())
+              setIsLoadingLyrics(false)
+              return
+            }
+          }
+        }
       }
-      const data = await response.json()
-      if (data.lyrics && data.lyrics.length > 20) {
-        const cleaned = data.lyrics
-          .replace(/\r\n/g, '\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .replace(/^.*?lyrics.*?\n/i, '')
-          .replace(/^\d+\s*Contributors?\s*$/m, '')
-          .trim()
-        setLyrics(cleaned || data.lyrics)
-      } else {
-        setLyrics(null)
+
+      // 2. Secondary fallback: lrclib.net with just cleanTitle
+      if (cleanArtist) {
+        const res2 = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(cleanTitle)}`)
+        if (res2.ok) {
+          const data2 = await res2.json()
+          if (Array.isArray(data2) && data2.length > 0) {
+            const match = data2.find(item => item.plainLyrics || item.syncedLyrics)
+            if (match) {
+              const raw = match.plainLyrics || match.syncedLyrics?.replace(/\[\d+:\d+\.\d+\]\s*/g, '')
+              if (raw && raw.trim().length > 15) {
+                setLyrics(raw.trim())
+                setIsLoadingLyrics(false)
+                return
+              }
+            }
+          }
+        }
       }
-    } catch {
+
+      // 3. Tertiary fallback: api.lyrics.ovh
+      if (cleanArtist && cleanTitle) {
+        const res3 = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTitle)}`)
+        if (res3.ok) {
+          const d3 = await res3.json()
+          if (d3.lyrics && d3.lyrics.length > 20) {
+            const cleaned = d3.lyrics
+              .replace(/\r\n/g, '\n')
+              .replace(/\n{3,}/g, '\n\n')
+              .replace(/^.*?lyrics.*?\n/i, '')
+              .replace(/^\d+\s*Contributors?\s*$/m, '')
+              .trim()
+            setLyrics(cleaned || d3.lyrics)
+            setIsLoadingLyrics(false)
+            return
+          }
+        }
+      }
+
+      setLyrics(null)
+    } catch (e) {
+      console.warn('Lyrics fetch failed:', e)
       setLyrics(null)
     } finally {
       setIsLoadingLyrics(false)
@@ -489,17 +716,11 @@ export default function App() {
 
   const searchYouTube = async (query) => {
     if (!query.trim()) return
-    if (!YOUTUBE_API_KEY) {
-      setErrorMsg('Search unavailable: YouTube API key not configured')
-      setTimeout(() => setErrorMsg(null), 6000)
-      setIsSearching(false)
-      return
-    }
     setIsSearching(true)
     setErrorMsg(null)
     try {
       const response = await fetchWithRetry(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=10`
+        buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&maxResults=16`)
       )
       const data = await response.json()
       if (data.error) {
@@ -516,7 +737,12 @@ export default function App() {
       setSearchResults(results)
       setShowTrending(false)
     } catch (err) {
-      setErrorMsg(`Search failed: ${err.message}`)
+      const msg = err.message?.includes('quota') || err.message?.includes('exceeded')
+        ? 'YouTube API quota exceeded. Set a custom key in Settings (⚙️).'
+        : err.message?.includes('HTTP 403')
+        ? 'YouTube API key invalid. Configure a key in Settings (⚙️).'
+        : `Search failed: ${err.message}`
+      setErrorMsg(msg)
       setTimeout(() => setErrorMsg(null), 6000)
     } finally {
       setIsSearching(false)
@@ -534,21 +760,7 @@ export default function App() {
     addToRecent(track)
     setQueue([track])
     setCurrentTrackIndex(0)
-    navigateTo('player')
     actuallyPlay(track)
-  }
-
-  const handleCategorySearch = (playlist) => {
-    if (!YOUTUBE_API_KEY) {
-      setErrorMsg('Search unavailable: YouTube API key not configured')
-      setTimeout(() => setErrorMsg(null), 6000)
-      return
-    }
-    setHeaderSearchQuery(playlist.name)
-    setSearchQuery(playlist.name)
-    searchYouTube(playlist.query || playlist.name)
-    setShowHeaderSearch(false)
-    navigateTo('explore')
   }
 
   const handleBackFromSearch = () => {
@@ -592,11 +804,14 @@ export default function App() {
   }
 
   const playPlaylistSong = (song, playlist) => {
+    if (isLongPress.current) {
+      isLongPress.current = false
+      return
+    }
     addToRecent(song)
     setQueue(playlist.songs)
     const idx = playlist.songs.findIndex(s => s.id === song.id)
     setCurrentTrackIndex(idx)
-    navigateTo('player')
     actuallyPlay(song)
   }
 
@@ -605,7 +820,6 @@ export default function App() {
     addToRecent(playlist.songs[0])
     setQueue(playlist.songs)
     setCurrentTrackIndex(0)
-    navigateTo('player')
     actuallyPlay(playlist.songs[0])
   }
 
@@ -623,15 +837,11 @@ export default function App() {
       setHeaderSearchResults([])
       return
     }
-    if (!YOUTUBE_API_KEY) {
-      setHeaderSearchResults([])
-      return
-    }
     setIsHeaderSearching(true)
     headerSearchTimeout.current = setTimeout(async () => {
       try {
         const response = await fetchWithRetry(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=5`
+          buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&maxResults=6`)
         )
         const data = await response.json()
         if (data.error) {
@@ -646,9 +856,14 @@ export default function App() {
             thumbnail: item.snippet.thumbnails.default?.url
           }))
         setHeaderSearchResults(results)
-      } catch {
+      } catch (err) {
         setHeaderSearchResults([])
-        setErrorMsg('Search unavailable right now')
+        const msg = err.message?.includes('quota') || err.message?.includes('exceeded')
+          ? 'YouTube API quota exceeded. Set a custom key in Settings.'
+          : err.message?.includes('HTTP 403') || err.message?.includes('restricted')
+          ? 'YouTube API key invalid. Check key in Settings.'
+          : 'Search unavailable right now'
+        setErrorMsg(msg)
         setTimeout(() => setErrorMsg(null), 6000)
       } finally {
         setIsHeaderSearching(false)
@@ -658,49 +873,19 @@ export default function App() {
 
   const handleHeaderSearchSubmit = async () => {
     if (!headerSearchQuery.trim()) return
-    if (!YOUTUBE_API_KEY) {
-      setErrorMsg('Search unavailable: YouTube API key not configured')
-      setTimeout(() => setErrorMsg(null), 6000)
-      return
-    }
     setSearchQuery(headerSearchQuery)
     setShowHeaderSearch(false)
     navigateTo('explore')
     await searchYouTube(headerSearchQuery)
   }
 
-  const curatedPlaylists = [
-  { id: 'gym', name: 'GYM', query: 'workout music gym', icon: '💪' },
-  { id: 'bollywood', name: 'Bollywood', query: 'bollywood dance hits 2025', icon: '🎬' },
-  { id: 'fast', name: 'Fast', query: 'fast energetic workout music', icon: '⚡' },
-  { id: 'funk', name: 'Funk', query: 'funk disco grove', icon: '🕺' },
-  { id: 'hiphop', name: 'Hip Hop', query: 'hip hop rap bangers', icon: '🎤' },
-  { id: 'chill', name: 'Chill', query: 'chill lofi relaxing', icon: '🌊' },
-  { id: 'rnb', name: 'R&B', query: 'rnb soul vibes', icon: '🎸' },
-  { id: 'rock', name: 'Rock', query: 'rock alternative', icon: '🤘' },
-  { id: 'jazz', name: 'Jazz', query: 'jazz smooth', icon: '🎷' },
-  { id: 'edm', name: 'EDM', query: 'edm electronic dance', icon: '🔊' },
-  { id: 'party', name: 'Party', query: 'party dance hits', icon: '🎉' },
-  { id: 'sad', name: 'Sad', query: 'sad emotional songs', icon: '😢' },
-]
-
-const getMatchingPlaylists = (query) => {
-  if (!query || !query.trim()) return []
-  const q = query.toLowerCase().trim()
-  return curatedPlaylists.filter(p =>
-    p.name.toLowerCase().includes(q) ||
-    p.query.toLowerCase().includes(q) ||
-    q.includes(p.name.toLowerCase())
-  )
-}
-
-const fetchSimilarSongs = async (track) => {
-    if (!track || !YOUTUBE_API_KEY) return
+  const fetchSimilarSongs = async (track) => {
+    if (!track) return
     setIsLoadingRecommended(true)
     try {
       const query = `${track.title} ${track.artist} music`
       const response = await fetchWithRetry(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}&maxResults=7`
+        buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&maxResults=8`)
       )
       const data = await response.json()
       if (data.error) {
@@ -714,7 +899,7 @@ const fetchSimilarSongs = async (track) => {
           artist: item.snippet.channelTitle,
           thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
         }))
-      setRecommendedSongs(results.filter(s => s.id !== track.id).slice(0, 5))
+      setRecommendedSongs(results.filter(s => s.id !== track.id).slice(0, 6))
     } catch {
       setRecommendedSongs([])
     } finally {
@@ -722,19 +907,68 @@ const fetchSimilarSongs = async (track) => {
     }
   }
 
+  const fetchGenZRecommendations = async () => {
+    setIsLoadingIndianRecs(true)
+    const categories = [
+      { name: 'Featured Selections', query: 'global viral top hits 2025 2026 trending', color: '#18181b' },
+      { name: 'Modern Bass & Rhythm', query: 'phonk drift bass aggressive workout music', color: '#27272a' },
+      { name: 'Acoustic & Lo-Fi', query: 'lofi hip hop beats chill study relax 2025', color: '#3f3f46' },
+      { name: 'Global Melodies', query: 'afrobeats reggaeton latin pop dance 2025', color: '#52525b' },
+      { name: 'Atmospheric Indie', query: 'hyperpop indie rock synthwave 2025', color: '#71717a' },
+      { name: 'Lyrical Hip-Hop', query: 'underground rap boom bap drill hits', color: '#a1a1aa' },
+    ]
+
+    try {
+      const categoryPromises = categories.map(async (cat) => {
+        try {
+          const response = await fetchWithRetry(
+            buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(cat.query)}&type=video&videoEmbeddable=true&maxResults=8`)
+          )
+          const data = await response.json()
+          if (data.error) throw new Error(data.error.message)
+          const songs = (data.items || [])
+            .filter(item => item.id?.videoId)
+            .map(item => ({
+              id: item.id.videoId,
+              title: item.snippet.title,
+              artist: item.snippet.channelTitle,
+              thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
+            }))
+          return { ...cat, songs: songs.slice(0, 6) }
+        } catch {
+          return { ...cat, songs: [] }
+        }
+      })
+
+      const results = await Promise.all(categoryPromises)
+      const filtered = results.filter(c => c.songs.length >= 3)
+      setIndianRecCategories(filtered)
+      const allSongs = filtered.flatMap(c => c.songs)
+      setIndianRecs(allSongs.slice(0, 12))
+    } catch {
+      setIndianRecCategories([])
+      setIndianRecs([])
+    } finally {
+      setIsLoadingIndianRecs(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchGenZRecommendations()
+  }, [])
+
   const getRediscoverSongs = useCallback(() => {
     const recentIds = new Set(recentlyPlayed.slice(0, 10).map(s => s.id))
     return likedSongs.filter(s => !recentIds.has(s.id)).slice(0, 8)
   }, [likedSongs, recentlyPlayed])
 
   const buildQuickPicks = useCallback(() => {
-    const recentIds = new Set()
-    const picks = []
     const recent = recentlyPlayed.slice(0, 10)
     const recentArtistSet = new Set(recent.map(s => s.artist))
     const likedArtistSet = new Set(likedSongs.map(s => s.artist))
 
     const seen = new Set()
+    const picks = []
     const addUnique = (songs) => {
       for (const s of songs) {
         if (!seen.has(s.id) && picks.length < 8) {
@@ -759,9 +993,9 @@ const fetchSimilarSongs = async (track) => {
     if (trendingSongs.length < 4) return
     const shuffled = [...trendingSongs].sort(() => Math.random() - 0.5)
     const genres = [
-      { name: '🔥 Trending Now', icon: 'fire', songs: shuffled.slice(0, 6) },
-      { name: '🎵 Top Picks', icon: 'music', songs: shuffled.slice(4, 10) },
-      { name: '🌟 Discover', icon: 'star', songs: shuffled.slice(8, 14).length > 2 ? shuffled.slice(8, 14) : shuffled.slice(0, 6) },
+      { name: 'Curated Highlights', icon: 'fire', songs: shuffled.slice(0, 6) },
+      { name: 'Essential Mix', icon: 'music', songs: shuffled.slice(4, 10) },
+      { name: 'New Perspectives', icon: 'star', songs: shuffled.slice(8, 14).length > 2 ? shuffled.slice(8, 14) : shuffled.slice(0, 6) },
     ]
     setRecommendedPlaylists(genres.filter(p => p.songs.length >= 3))
   }, [trendingSongs])
@@ -781,681 +1015,1156 @@ const fetchSimilarSongs = async (track) => {
     }
   }, [likedSongs, recentlyPlayed, buildQuickPicks, trendingSongs.length])
 
-  const makeAmbientColor = (r, g, b, isDark) => {
-    const gray = r * 0.299 + g * 0.587 + b * 0.114
-    const saturation = 0.3
-    const dr = Math.round(r + (gray - r) * saturation)
-    const dg = Math.round(g + (gray - g) * saturation)
-    const db = Math.round(b + (gray - b) * saturation)
-    if (isDark) {
-      const lr = Math.round(dr * 0.5)
-      const lg = Math.round(dg * 0.5)
-      const lb = Math.round(db * 0.5)
-      return `rgb(${lr},${lg},${lb})`
-    }
-    const lr = Math.round(dr + (255 - dr) * 0.3)
-    const lg = Math.round(dg + (255 - dg) * 0.3)
-    const lb = Math.round(db + (255 - db) * 0.3)
-    return `rgb(${lr},${lg},${lb})`
+  const getTimeOfDay = () => {
+    const h = new Date().getHours()
+    if (h < 12) return 'morning'
+    if (h < 17) return 'afternoon'
+    return 'evening'
   }
 
-  const extractAmbientColors = useCallback(async (imageUrl) => {
-    if (!imageUrl) return
-    try {
-      const img = new Image()
-      img.crossOrigin = 'Anonymous'
-      await new Promise((resolve, reject) => {
-        img.onload = resolve
-        img.onerror = reject
-        img.src = imageUrl
-      })
-      const canvas = document.createElement('canvas')
-      canvas.width = 8
-      canvas.height = 8
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(img, 0, 0, 8, 8)
-      const { data } = ctx.getImageData(0, 0, 8, 8)
-      const colorMap = {}
-      for (let i = 0; i < data.length; i += 4) {
-        const r = Math.round(data[i] / 32) * 32
-        const g = Math.round(data[i + 1] / 32) * 32
-        const b = Math.round(data[i + 2] / 32) * 32
-        const a = data[i + 3]
-        if (a < 128) continue
-        const key = `${r},${g},${b}`
-        colorMap[key] = (colorMap[key] || 0) + 1
-      }
-      const sorted = Object.entries(colorMap)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4)
-        .map(([key]) => {
-          const [r, g, b] = key.split(',').map(Number)
-          return makeAmbientColor(r, g, b, darkModeRef.current)
-        })
-      setAmbientColors(sorted)
-    } catch {
-      setAmbientColors([])
-    }
-  }, [])
-
-  useEffect(() => {
-    if (currentTrack?.thumbnail) {
-      extractAmbientColors(currentTrack.thumbnail)
-    } else {
-      setAmbientColors([])
-    }
-  }, [currentTrack, extractAmbientColors])
-
-  const rediscoverSongs = getRediscoverSongs()
+  const rediscoverSongs = useMemo(() => {
+    const recentIds = new Set(recentlyPlayed.slice(0, 10).map(s => s.id))
+    return likedSongs.filter(s => !recentIds.has(s.id)).slice(0, 8)
+  }, [likedSongs, recentlyPlayed])
 
   const handlePlayQuickPick = (song) => {
+    if (isLongPress.current) {
+      isLongPress.current = false
+      return
+    }
     addToRecent(song)
     setQueue([song])
     setCurrentTrackIndex(0)
-    navigateTo('player')
     actuallyPlay(song)
   }
 
   const playPlaylistSongFromQueue = (song, queueList) => {
+    if (isLongPress.current) {
+      isLongPress.current = false
+      return
+    }
     addToRecent(song)
     setQueue(queueList)
     const idx = queueList.findIndex(s => s.id === song.id)
     setCurrentTrackIndex(idx)
-    navigateTo('player')
     actuallyPlay(song)
   }
 
+  const openSettings = () => {
+    setSettingsApiKey(customApiKey || '')
+    setShowSettingsModal(true)
+  }
+
+  const saveApiKey = () => {
+    const key = settingsApiKey.trim()
+    if (key) {
+      localStorage.setItem('dhun_youtube_api_key', key)
+      setCustomApiKey(key)
+    } else {
+      localStorage.removeItem('dhun_youtube_api_key')
+      setCustomApiKey('')
+    }
+    setShowSettingsModal(false)
+  }
+
+  const formatTime = (sec) => {
+    if (!sec || isNaN(sec) || sec < 0) return '0:00'
+    const m = Math.floor(sec / 60)
+    const s = Math.floor(sec % 60)
+    return `${m}:${s < 10 ? '0' : ''}${s}`
+  }
+
   return (
-    <div
-      className={`app-root${isDarkMode ? ' dark' : ''}${ambientColors.length ? ' has-ambient' : ''}`}
-      style={ambientColors.length ? {
-        background: `
-          radial-gradient(ellipse 150% 50% at 50% -20%, ${ambientColors[0]} 0%, ${ambientColors[1] || ambientColors[0]} 35%, transparent 70%),
-          radial-gradient(ellipse 120% 45% at 20% 100%, ${ambientColors[2] || ambientColors[0]} 0%, transparent 65%),
-          radial-gradient(ellipse 120% 45% at 80% 100%, ${ambientColors[3] || ambientColors[1] || ambientColors[0]} 0%, transparent 65%),
-          linear-gradient(to bottom, ${ambientColors[0]}00 0%, ${ambientColors[0]}08 100%)
-        `
-      } : {}}
-    >
+    <div className={`app-root${isDarkMode ? ' dark' : ''}`}>
       <div className="app-shell">
-        <div className="youtube-player-wrapper"><div id="youtube-player-container"></div></div>
+        <div className="youtube-player-wrapper">
+          <div id="youtube-player-container"></div>
+        </div>
 
-        <header className={`app-header${showHeaderSearch ? ' header-search-active' : ''}`}>
-          <button onClick={handleHeaderBack} className="icon-btn back-btn">
-            <ChevronLeft size={28} />
-          </button>
+        {/* Desktop Editorial Sidebar (Laptops & Desktops >= 1024px) */}
+        <aside className="desktop-sidebar">
+          <div className="sidebar-brand" onClick={() => navigateTo('welcome')}>
+            <div className="sidebar-brand-text">
+              <h1 className="sidebar-title">Dhun</h1>
+              <span className="sidebar-edition">Audio Edition / Vol. 04</span>
+            </div>
+          </div>
 
-          <div className={`header-search-container${showHeaderSearch ? ' expanded' : ''}`}>
-            <button
-              className="header-search-trigger"
-              onClick={() => { setShowHeaderSearch(true); setTimeout(() => headerSearchInputRef.current?.focus(), 100) }}
-            >
-              <Search size={18} />
-              {!showHeaderSearch && <span className="header-search-placeholder">Search</span>}
+          <div className="sidebar-nav-group">
+            <span className="sidebar-label">Index</span>
+            <nav className="sidebar-menu">
+              <button
+                onClick={() => navigateTo('welcome')}
+                className={`sidebar-link${activeTab === 'welcome' ? ' active' : ''}`}
+              >
+                <span className="sidebar-num">01</span>
+                <span className="sidebar-link-text">Overview</span>
+              </button>
+              <button
+                onClick={() => { navigateTo('explore'); fetchTrendingSongs() }}
+                className={`sidebar-link${activeTab === 'explore' ? ' active' : ''}`}
+              >
+                <span className="sidebar-num">02</span>
+                <span className="sidebar-link-text">Explore</span>
+              </button>
+              <button
+                onClick={() => navigateTo('player')}
+                className={`sidebar-link${activeTab === 'player' ? ' active' : ''}`}
+              >
+                <span className="sidebar-num">03</span>
+                <span className="sidebar-link-text">Listening Room</span>
+                {isPlaying && <span className="sidebar-live-tag">Playing</span>}
+              </button>
+              <button
+                onClick={() => navigateTo('playlists')}
+                className={`sidebar-link${activeTab === 'playlists' ? ' active' : ''}`}
+              >
+                <span className="sidebar-num">04</span>
+                <span className="sidebar-link-text">Collections</span>
+              </button>
+            </nav>
+          </div>
+
+          {currentTrack && (
+            <div className="sidebar-card" onClick={() => navigateTo('player')}>
+              <div className="sidebar-card-badge">
+                <span className="pulse-dot" />
+                <span>Now Playing</span>
+              </div>
+              <div className="sidebar-card-body">
+                <img src={currentTrack.thumbnail} alt="" className="sidebar-card-thumb" onError={handleImgError} decoding="async" />
+                <div className="sidebar-card-info">
+                  <p className="sidebar-card-title">{currentTrack.title}</p>
+                  <p className="sidebar-card-artist">{currentTrack.artist}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="sidebar-footer">
+            <div className="sidebar-actions">
+              <button onClick={openSettings} className="sidebar-action-btn" title="Settings">
+                <Settings size={15} />
+                <span>Settings</span>
+              </button>
+              <button onClick={() => setShowCoffeeModal(true)} className="sidebar-action-btn coffee-btn" title="Support">
+                <Coffee size={15} />
+                <span>Support</span>
+              </button>
+            </div>
+            <div className="sidebar-status-box">
+              <span className="status-label">Stream Status</span>
+              <span className="status-val">Stereo Hi-Fi</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content Viewport */}
+        <div className="app-main-area">
+          <header className={`app-header${showHeaderSearch ? ' header-search-active' : ''}`}>
+            <button onClick={handleHeaderBack} className="icon-btn back-btn" title="Go back">
+              <ChevronLeft size={20} />
             </button>
-            {showHeaderSearch && (
-              <div className="header-search-dropdown">
-                <div className="header-search-input-wrap">
-                  <Search size={16} className="header-search-icon" />
-                  <input
-                    ref={headerSearchInputRef}
-                    type="text"
-                    className="header-search-input"
-                    placeholder="Search songs, artists..."
-                    value={headerSearchQuery}
-                    onChange={(e) => doHeaderSearch(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleHeaderSearchSubmit() } }}
-                    onBlur={() => setTimeout(() => { if (!headerSearchQuery) setShowHeaderSearch(false) }, 200)}
-                  />
-                  {headerSearchQuery && (
-                    <button className="header-search-clear" onClick={() => { setHeaderSearchQuery(''); setHeaderSearchResults([]); headerSearchInputRef.current?.focus() }}>
-                      <ChevronLeft size={16} />
-                    </button>
+
+            <div className={`header-search-container${showHeaderSearch ? ' expanded' : ''}`}>
+              <button
+                className="header-search-trigger"
+                onClick={() => { setShowHeaderSearch(true); setTimeout(() => headerSearchInputRef.current?.focus(), 100) }}
+              >
+                <Search size={15} />
+                {!showHeaderSearch && <span className="header-search-placeholder">Search tracks, artists, genres...</span>}
+              </button>
+              {showHeaderSearch && (
+                <div className="header-search-dropdown">
+                  <div className="header-search-input-wrap">
+                    <Search size={15} className="header-search-icon" />
+                    <input
+                      ref={headerSearchInputRef}
+                      type="text"
+                      className="header-search-input"
+                      placeholder="Search tracks, artists, genres..."
+                      value={headerSearchQuery}
+                      onChange={(e) => doHeaderSearch(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleHeaderSearchSubmit() } }}
+                      onBlur={() => setTimeout(() => { if (!headerSearchQuery) setShowHeaderSearch(false) }, 200)}
+                    />
+                    {headerSearchQuery && (
+                      <button className="header-search-clear" onClick={() => { setHeaderSearchQuery(''); setHeaderSearchResults([]); headerSearchInputRef.current?.focus() }}>
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+                  {isHeaderSearching && (
+                    <div className="header-search-loading"><div className="spinner-sm" /></div>
+                  )}
+                  {headerSearchResults.length > 0 && (
+                    <div className="header-search-results">
+                      {headerSearchResults.map(song => (
+                        <div key={song.id} className="header-search-result-item" onClick={() => playTrackFromHeader(song)}>
+                          <img src={song.thumbnail} alt="" className="header-search-result-thumb" onError={handleImgError} decoding="async" />
+                          <div className="header-search-result-info">
+                            <p className="header-search-result-title">{song.title}</p>
+                            <p className="header-search-result-artist">{song.artist}</p>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="header-search-see-all" onClick={handleHeaderSearchSubmit}>
+                        View all results for "{headerSearchQuery}" ➔
+                      </div>
+                    </div>
                   )}
                 </div>
-                {isHeaderSearching && (
-                  <div className="header-search-loading"><div className="spinner-sm" /></div>
-                )}
-                {headerSearchResults.length > 0 && (
-                  <div className="header-search-results">
-                    {headerSearchResults.map(song => (
-                      <div key={song.id} className="header-search-result-item" onClick={() => playTrackFromHeader(song)}>
-                        <img src={song.thumbnail} alt="" className="header-search-result-thumb" />
-                        <div className="header-search-result-info">
-                          <p className="header-search-result-title">{song.title}</p>
-                          <p className="header-search-result-artist">{song.artist}</p>
-                        </div>
+              )}
+            </div>
+
+            <div className="header-actions">
+              <button onClick={openSettings} className="icon-btn" title="Settings">
+                <Settings size={18} />
+              </button>
+              <button onClick={toggleFullscreen} className="icon-btn" title="Toggle fullscreen">
+                {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
+              <button onClick={() => setIsDarkMode(!isDarkMode)} className="icon-btn theme-toggle-btn" title={isDarkMode ? 'Light Mode' : 'Dark Mode'}>
+                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+            </div>
+          </header>
+
+          {/* Editorial Meta Strip */}
+          <div className="editorial-meta-bar" aria-hidden="true">
+            <span className="editorial-edition-label">DHUN MUSIC</span>
+            <span className="meta-sep">—</span>
+            <span>ISSUE N° 04</span>
+            <span className="meta-sep">—</span>
+            <span>PURE STREAMING</span>
+            <span className="meta-sep">—</span>
+            <span>GOOD {getTimeOfDay().toUpperCase()}</span>
+          </div>
+
+          <main className="app-main">
+            {errorMsg && <div className="error-toast">{errorMsg}</div>}
+            {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
+            {!isYtReady && playerErrorState && (
+              <div className="yt-blocked-banner">
+                <Music2 size={18} />
+                <span>Audio player blocked. Please consider disabling ad blockers for playback.</span>
+              </div>
+            )}
+
+            {activeTab === 'welcome' && (
+              <div className="welcome-view">
+                <section className="home-hero">
+                  <div className="home-hero-meta-row">
+                    <span className="hero-meta-item">Curated Selection</span>
+                    <span className="hero-meta-dot">•</span>
+                    <span className="hero-meta-item">Vol. 04</span>
+                    <span className="hero-meta-dot">•</span>
+                    <span className="hero-meta-item">Distilled Listening</span>
+                  </div>
+                  <div className="home-hero-content">
+                    <div className="home-hero-text">
+                      <h1 className="home-hero-title">Dhun</h1>
+                      <p className="home-hero-subtitle">A quiet, distilled sanctuary for music discovery and contemplation.</p>
+                    </div>
+                  </div>
+                </section>
+
+                {quickPicks.length > 0 && (
+                  <section className="home-section">
+                    <div className="home-section-header">
+                      <div className="home-section-title-wrap">
+                        <span className="home-section-number">01</span>
+                        <h2 className="home-section-title">Quick Picks</h2>
                       </div>
-                    ))}
-                    <div className="header-search-see-all" onClick={handleHeaderSearchSubmit}>
-                      See all results for "{headerSearchQuery}"
+                      <span className="home-section-subtitle">Recommended for you</span>
+                    </div>
+                    <div className="quick-picks-scroll">
+                      <div className="quick-picks-track">
+                        {quickPicks.map((song, idx) => (
+                          <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
+                            <div className="quick-pick-thumb-wrap">
+                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                              <div className="quick-pick-overlay">
+                                <div className="quick-pick-play-btn">
+                                  <PlayIcon size={16} fill="currentColor" />
+                                </div>
+                              </div>
+                              <div className="quick-pick-rank">{idx + 1}</div>
+                            </div>
+                            <div className="quick-pick-info">
+                              <p className="quick-pick-title">{song.title}</p>
+                              <p className="quick-pick-artist">{song.artist}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {playlists.length > 0 && (
+                  <section className="home-section">
+                    <div className="home-section-header">
+                      <div className="home-section-title-wrap">
+                        <span className="home-section-number">02</span>
+                        <h2 className="home-section-title">Your Collections</h2>
+                      </div>
+                      <button className="home-section-link" onClick={() => navigateTo('playlists')}>
+                        View all ({playlists.length}) ➔
+                      </button>
+                    </div>
+                    <div className="home-playlists-scroll">
+                      <div className="home-playlists-track">
+                        {likedSongs.length > 0 && (
+                          <div className="home-playlist-card liked-card" onClick={() => { setSelectedPlaylistId('liked'); navigateTo('playlists') }}>
+                            <div className="home-playlist-cover home-playlist-liked">
+                              <Heart size={22} fill="currentColor" />
+                            </div>
+                            <p className="home-playlist-name">Liked Songs</p>
+                            <span className="home-playlist-count">{likedSongs.length} tracks</span>
+                          </div>
+                        )}
+                        {playlists.map(p => (
+                          <div key={p.id} className="home-playlist-card" onClick={() => { setSelectedPlaylistId(p.id); navigateTo('playlists') }}>
+                            <div className="home-playlist-cover">
+                              {p.songs.length > 0 ? (
+                                <div className="home-playlist-collage">
+                                  {p.songs.slice(0, 4).map((s, i) => (
+                                    <img key={i} src={s.thumbnail} alt="" loading="lazy" />
+                                  ))}
+                                </div>
+                              ) : (
+                                <ListMusic size={22} />
+                              )}
+                            </div>
+                            <p className="home-playlist-name">{p.name}</p>
+                            <span className="home-playlist-count">{p.songs.length} tracks</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="home-section home-section-recs">
+                  <div className="home-section-header">
+                    <div className="home-section-title-wrap">
+                      <span className="home-section-number">03</span>
+                      <h2 className="home-section-title">Featured Channels</h2>
+                    </div>
+                    <span className="home-section-tag">Editorial</span>
+                  </div>
+
+                  {isLoadingIndianRecs ? (
+                    <div className="home-loading">
+                      <div className="spinner" />
+                      <span>Loading curated selections...</span>
+                    </div>
+                  ) : indianRecCategories.length > 0 ? (
+                    <>
+                      <div className="rec-categories-grid">
+                        {indianRecCategories.slice(0, 6).map((category, catIdx) => (
+                          <div
+                            key={catIdx}
+                            className="rec-category-card"
+                            onClick={() => {
+                              if (category.songs.length === 0) return
+                              addToRecent(category.songs[0])
+                              setQueue(category.songs)
+                              setCurrentTrackIndex(0)
+                              actuallyPlay(category.songs[0])
+                            }}
+                          >
+                            <div className="rec-category-collage">
+                              <div className="rec-category-collage-inner">
+                                {category.songs.slice(0, 4).map((song, sIdx) => (
+                                  <div key={sIdx} className="rec-category-collage-item">
+                                    <img src={song.thumbnail} alt="" loading="lazy" />
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="rec-category-collage-overlay">
+                                <div className="rec-category-play-btn">
+                                  <PlayIcon size={18} fill="currentColor" />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="rec-category-info">
+                              <h3 className="rec-category-name">{category.name}</h3>
+                              <p className="rec-category-meta">{category.songs.length} curated tracks</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rec-expanded-songs">
+                        {indianRecCategories.slice(0, 3).map((category, catIdx) => (
+                          <div key={catIdx} className="rec-song-group">
+                            <div className="rec-song-group-header">
+                              <span className="rec-song-group-bullet" />
+                              <h4 className="rec-song-group-title">{category.name}</h4>
+                            </div>
+                            <div className="rec-song-list">
+                              {category.songs.slice(0, 5).map((song, songIdx) => (
+                                <div
+                                  key={song.id}
+                                  className="rec-song-item"
+                                  onClick={() => {
+                                    if (isLongPress.current) {
+                                      isLongPress.current = false
+                                      return
+                                    }
+                                    addToRecent(song)
+                                    setQueue(category.songs)
+                                    setCurrentTrackIndex(songIdx)
+                                    actuallyPlay(song)
+                                  }}
+                                  onPointerDown={() => handlePointerDown(song)}
+                                  onPointerUp={handlePointerUp}
+                                  onPointerLeave={handlePointerLeave}
+                                >
+                                  <img src={song.thumbnail} alt="" className="rec-song-thumb" />
+                                  <div className="rec-song-details">
+                                    <p className="rec-song-title">{song.title}</p>
+                                    <p className="rec-song-artist">{song.artist}</p>
+                                  </div>
+                                  <div className="rec-song-actions">
+                                    <button
+                                      className={`rec-song-like-btn${isLiked(song) ? ' liked' : ''}`}
+                                      onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                                      aria-label={isLiked(song) ? 'Unlike' : 'Like'}
+                                    >
+                                      <Heart size={15} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="home-empty">
+                      <div className="home-empty-icon">
+                        <Music2 size={28} />
+                      </div>
+                      <p>No recommendations loaded</p>
+                      <span>Search for songs to tune your personalized feed</span>
+                    </div>
+                  )}
+                </section>
+
+                {rediscoverSongs.length > 0 && (
+                  <section className="home-section">
+                    <div className="home-section-header">
+                      <div className="home-section-title-wrap">
+                        <span className="home-section-number">04</span>
+                        <h2 className="home-section-title">Rediscover</h2>
+                      </div>
+                      <span className="home-section-subtitle">From your library</span>
+                    </div>
+                    <div className="quick-picks-scroll">
+                      <div className="quick-picks-track">
+                        {rediscoverSongs.map((song) => (
+                          <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
+                            <div className="quick-pick-thumb-wrap">
+                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                              <div className="quick-pick-overlay">
+                                <div className="quick-pick-play-btn">
+                                  <PlayIcon size={16} fill="currentColor" />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="quick-pick-info">
+                              <p className="quick-pick-title">{song.title}</p>
+                              <p className="quick-pick-artist">{song.artist}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'player' && (
+              <div className="player-view">
+                <div className="track-info">
+                  {currentTrack ? (
+                    <div className="track-header-box">
+                      <span className="track-edition-tag">{isPlaying ? 'Now Playing' : 'Paused'} • Stereo 320k</span>
+                      <h1 className="track-title">{currentTrack.title}</h1>
+                      <p className="track-artist">{currentTrack.artist}</p>
+                    </div>
+                  ) : (
+                    <div className="no-track-state">
+                      <div className="no-track-icon-frame">
+                        <Music2 size={36} />
+                      </div>
+                      <h2>Listening Room Idle</h2>
+                      <p>Select any piece from the catalog to begin listening.</p>
+                      <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className="editorial-btn-primary">
+                        Browse Catalog ➔
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {currentTrack && (
+                  <div className="player-grid-layout">
+                    <div className="player-deck-main">
+                      <div className="album-art-container">
+                        <img
+                          src={currentTrack.thumbnail || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop'}
+                          alt="Album Cover"
+                          className="album-img"
+                        />
+                      </div>
+
+                      <div className="seek-section">
+                        <div className="seek-meta-row">
+                          <span className="seek-timestamp">{formatTime(currentTime)}</span>
+                          <span className="seek-tag">{formatTime(duration)}</span>
+                        </div>
+                        <input
+                          type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek}
+                          className="seek-bar"
+                          style={{
+                            background: `linear-gradient(to right, var(--text-main) ${(currentTime / (duration || 1)) * 100}%, var(--border-color) ${(currentTime / (duration || 1)) * 100}%)`
+                          }}
+                        />
+                      </div>
+
+                      <div className="controls-row">
+                        <button onClick={handlePrev} disabled={queue.length <= 1 && repeatMode !== 'one'} className="ctrl-btn" title="Previous">
+                          <SkipBack size={20} fill="currentColor" />
+                        </button>
+                        <button onClick={togglePlayPause} className="ctrl-btn ctrl-btn-play" title={isPlaying ? 'Pause' : 'Play'}>
+                          {isPlaying
+                            ? <Pause size={24} fill="currentColor" />
+                            : <Play size={24} fill="currentColor" />}
+                        </button>
+                        <button onClick={handleNext} disabled={queue.length <= 1 && repeatMode !== 'one'} className="ctrl-btn" title="Next">
+                          <SkipForward size={20} fill="currentColor" />
+                        </button>
+                      </div>
+
+                      <div className="player-actions-row">
+                        <button
+                          onClick={handleRepeatToggle}
+                          className={`player-action-btn${repeatMode !== 'none' ? ' active-action-btn' : ''}`}
+                          title={repeatMode === 'none' ? 'No repeat' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
+                        >
+                          {repeatMode === 'one' ? <Repeat1 size={15} /> : <Repeat size={15} />}
+                          <span>{repeatMode === 'none' ? 'Repeat' : repeatMode === 'all' ? 'All' : 'One'}</span>
+                        </button>
+                        <button
+                          onClick={() => toggleLike(currentTrack)}
+                          className={`player-action-btn${isLiked(currentTrack) ? ' liked-btn' : ''}`}
+                        >
+                          <Heart size={15} fill={isLiked(currentTrack) ? 'currentColor' : 'none'} />
+                          <span>{isLiked(currentTrack) ? 'Liked' : 'Like'}</span>
+                        </button>
+                        <button onClick={toggleLyrics} className={`player-action-btn${showLyrics ? ' active-action-btn' : ''}`}>
+                          <Mic2 size={15} />
+                          <span>{showLyrics ? 'Close Lyrics' : 'Lyrics'}</span>
+                        </button>
+                        <button onClick={() => setAddToPlaylistTarget(currentTrack)} className="player-action-btn">
+                          <Plus size={15} />
+                          <span>Add to List</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="player-deck-side">
+                      {showLyrics && (
+                        <div className="lyrics-content-wrapper">
+                          <div className="lyrics-header">
+                            <span className="lyrics-badge">Lyrics Transcript</span>
+                            <button onClick={() => setShowLyrics(false)} className="lyrics-close-btn" title="Close lyrics">
+                              <X size={15} />
+                            </button>
+                          </div>
+                          {isLoadingLyrics ? (
+                            <div className="lyrics-loading"><div className="spinner" /><p>Fetching transcript...</p></div>
+                          ) : lyrics ? (
+                            <pre className="lyrics-content">{lyrics}</pre>
+                          ) : (
+                            <div className="lyrics-empty">
+                              <Mic2 size={24} />
+                              <p>No lyrics transcript found automatically</p>
+                              <button
+                                className="editorial-btn-primary"
+                                style={{ marginTop: '8px', padding: '8px 16px', fontSize: '12px' }}
+                                onClick={() => fetchLyrics(currentTrack.artist, currentTrack.title)}
+                              >
+                                Retry Fetching Lyrics
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="recommended-section">
+                        <button
+                          className="recommended-toggle"
+                          onClick={() => setShowRecommendedSongs(!showRecommendedSongs)}
+                        >
+                          <span>Related Selections</span>
+                          <ChevronUp size={16} className={`recommended-arrow${showRecommendedSongs ? ' rotated' : ''}`} />
+                        </button>
+                        {showRecommendedSongs && (
+                          <div className="recommended-list">
+                            {isLoadingRecommended ? (
+                              <div className="recommended-loading"><div className="spinner" /></div>
+                            ) : recommendedSongs.length > 0 ? (
+                              recommendedSongs.map(song => (
+                                <div
+                                  key={song.id}
+                                  className="recommended-item"
+                                  onClick={() => {
+                                    addToRecent(song)
+                                    setQueue([song])
+                                    setCurrentTrackIndex(0)
+                                    actuallyPlay(song)
+                                  }}
+                                >
+                                  <img src={song.thumbnail} alt="" className="recommended-thumb" />
+                                  <div className="recommended-info">
+                                    <p className="recommended-title">{song.title}</p>
+                                    <p className="recommended-artist">{song.artist}</p>
+                                  </div>
+                                  <button
+                                    className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
+                                    onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                                  >
+                                    <Heart size={13} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="recommended-empty">No similar tracks found</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             )}
-          </div>
 
-          <div className="header-actions">
-            <button onClick={toggleFullscreen} className="icon-btn" title="Toggle fullscreen">
-              {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-            </button>
-            <button onClick={() => setIsDarkMode(!isDarkMode)} className="icon-btn">
-              {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
-            </button>
-          </div>
-        </header>
-
-        <main className="app-main">
-          {errorMsg && <div className="error-toast">{errorMsg}</div>}
-          {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
-
-          {activeTab === 'welcome' && (
-            <div className="welcome-view">
-              {quickPicks.length > 0 && (
-                <section className="home-section">
-                  <div className="home-section-header">
-                    <h2 className="home-section-title">Quick Picks</h2>
-                  </div>
-                  <div className="quick-picks-scroll">
-                    <div className="quick-picks-track">
-                      {quickPicks.map(song => (
-                        <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
-                          <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
-                          <div className="quick-pick-info">
-                            <p className="quick-pick-title">{song.title}</p>
-                            <p className="quick-pick-artist">{song.artist}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <section className="home-section">
-                <div className="home-section-header">
-                  <h2 className="home-section-title">Browse by Mood</h2>
-                </div>
-                <div className="category-playlists-grid">
-                  {curatedPlaylists.map(p => (
-                    <div key={p.id} className="category-card" onClick={() => handleCategorySearch(p)}>
-                      <span className="category-card-icon">{p.icon}</span>
-                      <span className="category-card-label">{p.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-
-          {activeTab === 'player' && (
-            <div className="player-view">
-              <div className="track-info">
-                {currentTrack ? (
+            {activeTab === 'playlists' && (
+              <div className="playlists-view">
+                {selectedPlaylistId === 'liked' ? (
                   <>
-                    <h1 className="track-title">{currentTrack.title}</h1>
-                    <p className="track-artist">{currentTrack.artist}</p>
-                  </>
-                ) : (
-                  <div className="no-track-state">
-                    <Music2 size={48} />
-                    <h2>No song playing</h2>
-                    <p>Search or explore to find music</p>
-                  </div>
-                )}
-              </div>
-
-              {currentTrack && (
-                <>
-                  <div className="album-art">
-                    <img
-                      src={currentTrack.thumbnail || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop'}
-                      alt="Album Cover"
-                      className={`album-img${isPlaying ? ' playing' : ''}`}
-                    />
-                  </div>
-
-                  <div className="seek-section">
-                    <input
-                      type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek}
-                      className="seek-bar"
-                      style={{
-                        background: `linear-gradient(to right, ${isDarkMode ? '#fff' : '#000'} ${(currentTime / (duration || 1)) * 100}%, ${isDarkMode ? '#333' : '#ccc'} ${(currentTime / (duration || 1)) * 100}%)`
-                      }}
-                    />
-                  </div>
-
-                  <div className="controls-row">
-                    <button onClick={handlePrev} disabled={queue.length <= 1 && repeatMode !== 'one'} className="ctrl-btn">
-                      <SkipBack size={28} fill="currentColor" />
-                    </button>
-                    <button onClick={togglePlayPause} className="ctrl-btn ctrl-btn-play">
-                      {isPlaying
-                        ? <Pause size={32} fill="currentColor" />
-                        : <Play size={32} fill="currentColor" />}
-                    </button>
-                    <button onClick={handleNext} disabled={queue.length <= 1 && repeatMode !== 'one'} className="ctrl-btn">
-                      <SkipForward size={28} fill="currentColor" />
-                    </button>
-                  </div>
-
-                  <div className="player-actions-row">
-                    <button
-                      onClick={handleRepeatToggle}
-                      className={`player-action-btn${repeatMode !== 'none' ? ' active-action-btn' : ''}`}
-                      title={repeatMode === 'none' ? 'No repeat' : repeatMode === 'all' ? 'Repeat all' : 'Repeat one'}
-                    >
-                      {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
-                      {repeatMode === 'none' ? 'Repeat' : repeatMode === 'all' ? 'Repeat All' : 'Repeat One'}
-                    </button>
-                    <button
-                      onClick={() => toggleLike(currentTrack)}
-                      className={`player-action-btn${isLiked(currentTrack) ? ' liked-btn' : ''}`}
-                    >
-                      <Heart size={18} fill={isLiked(currentTrack) ? 'currentColor' : 'none'} />
-                      {isLiked(currentTrack) ? 'Liked' : 'Like'}
-                    </button>
-                    <button onClick={toggleLyrics} className="player-action-btn">
-                      <Mic2 size={18} />
-                      {showLyrics ? 'Hide Lyrics' : 'Lyrics'}
-                    </button>
-                    <button onClick={() => setAddToPlaylistTarget(currentTrack)} className="player-action-btn">
-                      <Plus size={18} />
-                      Add
-                    </button>
-                  </div>
-
-                  {showLyrics && (
-                    <div className="lyrics-content-wrapper">
-                      {isLoadingLyrics ? (
-                        <div className="lyrics-loading"><div className="spinner" /></div>
-                      ) : lyrics ? (
-                        <pre className="lyrics-content">{lyrics}</pre>
-                      ) : (
-                        <div className="lyrics-empty">
-                          <Mic2 size={28} />
-                          <p>No lyrics available</p>
-                          <span>Try searching for a different version</span>
-                        </div>
+                    <div className="playlist-header-row">
+                      <button onClick={() => setSelectedPlaylistId(null)} className="playlist-back-btn">
+                        <ArrowLeft size={18} />
+                      </button>
+                      <div className="playlist-header-info">
+                        <h2 className="playlist-name">Liked Songs</h2>
+                        <p className="playlist-count">{likedSongs.length} tracks</p>
+                      </div>
+                      {likedSongs.length > 0 && (
+                        <button onClick={() => { setQueue(likedSongs); setCurrentTrackIndex(0); actuallyPlay(likedSongs[0]) }} className="playlist-play-all-btn">
+                          <PlayIcon size={16} fill="currentColor" />
+                          <span>Play All</span>
+                        </button>
                       )}
                     </div>
-                  )}
 
-                  <div className="recommended-section">
-                    <button
-                      className="recommended-toggle"
-                      onClick={() => setShowRecommendedSongs(!showRecommendedSongs)}
-                    >
-                      <span>You Might Also Like</span>
-                      <ChevronUp size={18} className={`recommended-arrow${showRecommendedSongs ? ' rotated' : ''}`} />
-                    </button>
-                    {showRecommendedSongs && (
-                      <div className="recommended-list">
-                        {isLoadingRecommended ? (
-                          <div className="recommended-loading"><div className="spinner" /></div>
-                        ) : recommendedSongs.length > 0 ? (
-                          recommendedSongs.map(song => (
-                            <div
-                              key={song.id}
-                              className="recommended-item"
-                              onClick={() => {
-                                addToRecent(song)
-                                setQueue([song])
-                                setCurrentTrackIndex(0)
-                                actuallyPlay(song)
-                              }}
-                            >
-                              <img src={song.thumbnail} alt="" className="recommended-thumb" />
-                              <div className="recommended-info">
-                                <p className="recommended-title">{song.title}</p>
-                                <p className="recommended-artist">{song.artist}</p>
+                    {likedSongs.length === 0 ? (
+                      <p className="playlist-empty">No liked tracks yet. Heart any song to add it here.</p>
+                    ) : (
+                      <div className="playlist-songs">
+                        {likedSongs.map(song => (
+                          <div key={song.id}
+                            className="playlist-song-item"
+                            onClick={() => playPlaylistSongFromQueue(song, likedSongs)}
+                            onPointerDown={() => handlePointerDown(song)}
+                            onPointerUp={handlePointerUp}
+                            onPointerLeave={handlePointerLeave}
+                          >
+                            <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
+                            <div className="playlist-song-info">
+                              <p className="playlist-song-title">{song.title}</p>
+                              <p className="playlist-song-artist">{song.artist}</p>
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); toggleLike(song) }} className="playlist-song-remove">
+                              <Heart size={15} fill="currentColor" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : selectedPlaylist ? (
+                  <>
+                    <div className="playlist-header-row">
+                      <button onClick={() => setSelectedPlaylistId(null)} className="playlist-back-btn">
+                        <ArrowLeft size={18} />
+                      </button>
+                      <div className="playlist-header-info">
+                        <h2 className="playlist-name">{selectedPlaylist.name}</h2>
+                        <p className="playlist-count">{selectedPlaylist.songs.length} tracks</p>
+                      </div>
+                      {selectedPlaylist.songs.length > 0 && (
+                        <button onClick={() => playPlaylist(selectedPlaylist)} className="playlist-play-all-btn">
+                          <PlayIcon size={16} fill="currentColor" />
+                          <span>Play All</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {selectedPlaylist.songs.length === 0 ? (
+                      <p className="playlist-empty">No tracks in this playlist. Discover and add tracks from Explore.</p>
+                    ) : (
+                      <div className="playlist-songs">
+                        {selectedPlaylist.songs.map(song => (
+                          <div
+                            key={song.id}
+                            className="playlist-song-item"
+                            onClick={() => playPlaylistSong(song, selectedPlaylist)}
+                            onPointerDown={() => handlePointerDown(song)}
+                            onPointerUp={handlePointerUp}
+                            onPointerLeave={handlePointerLeave}
+                          >
+                            <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
+                            <div className="playlist-song-info">
+                              <p className="playlist-song-title">{song.title}</p>
+                              <p className="playlist-song-artist">{song.artist}</p>
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); removeSongFromPlaylist(selectedPlaylist.id, song.id) }} className="playlist-song-remove">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="playlists-header">
+                      <div>
+                        <h2 className="playlists-title">Collections</h2>
+                        <span className="playlists-subtitle">Personal Audio Libraries</span>
+                      </div>
+                      <button onClick={() => setIsCreatingPlaylist(true)} className="create-playlist-btn">
+                        <Plus size={16} />
+                        New Playlist
+                      </button>
+                    </div>
+
+                    {isCreatingPlaylist && (
+                      <form className="create-playlist-form" onSubmit={(e) => { e.preventDefault(); createPlaylist() }}>
+                        <input
+                          type="text"
+                          className="create-playlist-input"
+                          placeholder="Enter playlist title..."
+                          value={newPlaylistName}
+                          onChange={(e) => setNewPlaylistName(e.target.value)}
+                          autoFocus
+                        />
+                        <button type="submit" className="create-playlist-confirm"><Check size={16} /></button>
+                        <button type="button" onClick={() => setIsCreatingPlaylist(false)} className="create-playlist-cancel"><ChevronLeft size={16} /></button>
+                      </form>
+                    )}
+
+                    {likedSongs.length > 0 && (
+                      <div className="playlist-card liked-songs-card" onClick={() => setSelectedPlaylistId('liked')}>
+                        <div className="playlist-card-cover liked-cover">
+                          <Heart size={20} fill="currentColor" />
+                        </div>
+                        <div className="playlist-card-info">
+                          <h3 className="playlist-card-name">Liked Songs</h3>
+                          <p className="playlist-card-count">{likedSongs.length} tracks</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="playlists-divider" />
+
+                    {playlists.length === 0 ? (
+                      <div className="playlists-empty">
+                        <ListMusic size={36} />
+                        <p>No playlists created yet</p>
+                        <span>Create your first collection to curate your sound library</span>
+                      </div>
+                    ) : (
+                      <div className="playlists-list">
+                        {playlists.map(p => (
+                          <div key={p.id} className="playlist-card" onClick={() => setSelectedPlaylistId(p.id)}>
+                            <div className="playlist-card-cover">
+                              <Library size={20} />
+                            </div>
+                            <div className="playlist-card-info">
+                              <h3 className="playlist-card-name">{p.name}</h3>
+                              <p className="playlist-card-count">{p.songs.length} tracks</p>
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); deletePlaylist(p.id) }} className="playlist-card-delete" title="Delete playlist">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {recentlyPlayed.length > 0 && (
+                      <div className="recent-section">
+                        <div className="recent-section-header">
+                          <Clock size={16} />
+                          <h3 className="recent-title">Recently Played</h3>
+                        </div>
+                        <div className="recent-list">
+                          {recentlyPlayed.map(song => (
+                            <div key={song.id} className="recent-item" onClick={() => {
+                              addToRecent(song)
+                              setQueue([song])
+                              setCurrentTrackIndex(0)
+                              actuallyPlay(song)
+                            }}>
+                              <img src={song.thumbnail} alt="" className="recent-thumb" />
+                              <div className="recent-info">
+                                <p className="recent-song-title">{song.title}</p>
+                                <p className="recent-song-artist">{song.artist}</p>
                               </div>
                               <button
                                 className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
                               >
-                                <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                                <Heart size={13} fill={isLiked(song) ? 'currentColor' : 'none'} />
                               </button>
                             </div>
-                          ))
-                        ) : (
-                          <p className="recommended-empty">No similar songs found</p>
-                        )}
+                          ))}
+                        </div>
                       </div>
                     )}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                  </>
+                )}
+              </div>
+            )}
 
-          {activeTab === 'playlists' && (
-            <div className="playlists-view">
-              {selectedPlaylistId === 'liked' ? (
-                <>
-                  <div className="playlist-header-row">
-                    <button onClick={() => setSelectedPlaylistId(null)} className="playlist-back-btn">
-                      <ArrowLeft size={20} />
-                    </button>
-                    <div className="playlist-header-info">
-                      <h2 className="playlist-name">Liked Songs</h2>
-                      <p className="playlist-count">{likedSongs.length} songs</p>
+            {activeTab === 'explore' && (
+              <div className="explore-view">
+                {showTrending ? (
+                  <>
+                    <div className="explore-header-row">
+                      <h2 className="explore-title">Trending Catalog</h2>
+                      <span className="explore-badge">Worldwide</span>
                     </div>
-                    {likedSongs.length > 0 && (
-                      <button onClick={() => { setQueue(likedSongs); setCurrentTrackIndex(0); navigateTo('player'); actuallyPlay(likedSongs[0]) }} className="playlist-play-all-btn">
-                        <PlayIcon size={20} />
-                      </button>
-                    )}
-                  </div>
-
-                  {likedSongs.length === 0 ? (
-                    <p className="playlist-empty">No liked songs yet. Tap the heart to like!</p>
-                  ) : (
-                    <div className="playlist-songs">
-                      {likedSongs.map(song => (
-                        <div key={song.id}
-                          className="playlist-song-item"
-                          onClick={() => playPlaylistSongFromQueue(song, likedSongs)}
-                          onPointerDown={() => handlePointerDown(song)}
-                          onPointerUp={handlePointerUp}
-                          onPointerLeave={handlePointerLeave}
-                        >
-                          <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
-                          <div className="playlist-song-info">
-                            <p className="playlist-song-title">{song.title}</p>
-                            <p className="playlist-song-artist">{song.artist}</p>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); toggleLike(song) }} className="playlist-song-remove">
-                            <Heart size={16} fill="currentColor" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : selectedPlaylist ? (
-                <>
-                  <div className="playlist-header-row">
-                    <button onClick={() => setSelectedPlaylistId(null)} className="playlist-back-btn">
-                      <ArrowLeft size={20} />
-                    </button>
-                    <div className="playlist-header-info">
-                      <h2 className="playlist-name">{selectedPlaylist.name}</h2>
-                      <p className="playlist-count">{selectedPlaylist.songs.length} songs</p>
-                    </div>
-                    {selectedPlaylist.songs.length > 0 && (
-                      <button onClick={() => playPlaylist(selectedPlaylist)} className="playlist-play-all-btn">
-                        <PlayIcon size={20} />
-                      </button>
-                    )}
-                  </div>
-
-                  {selectedPlaylist.songs.length === 0 ? (
-                    <p className="playlist-empty">No songs in this playlist. Search and add from Explore!</p>
-                  ) : (
-                    <div className="playlist-songs">
-                      {selectedPlaylist.songs.map(song => (
-                        <div key={song.id}
-                          className="playlist-song-item"
-                          onClick={() => playPlaylistSong(song, selectedPlaylist)}
-                          onPointerDown={() => handlePointerDown(song)}
-                          onPointerUp={handlePointerUp}
-                          onPointerLeave={handlePointerLeave}
-                        >
-                          <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
-                          <div className="playlist-song-info">
-                            <p className="playlist-song-title">{song.title}</p>
-                            <p className="playlist-song-artist">{song.artist}</p>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); removeSongFromPlaylist(selectedPlaylist.id, song.id) }} className="playlist-song-remove">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="playlists-header">
-                    <h2 className="playlists-title">My Playlists</h2>
-                    <button onClick={() => setIsCreatingPlaylist(true)} className="create-playlist-btn">
-                      <Plus size={20} />
-                      Create
-                    </button>
-                  </div>
-
-                  {isCreatingPlaylist && (
-                    <form className="create-playlist-form" onSubmit={(e) => { e.preventDefault(); createPlaylist() }}>
-                      <input
-                        type="text"
-                        className="create-playlist-input"
-                        placeholder="Playlist name..."
-                        value={newPlaylistName}
-                        onChange={(e) => setNewPlaylistName(e.target.value)}
-                        autoFocus
-                      />
-                      <button type="submit" className="create-playlist-confirm"><Check size={18} /></button>
-                      <button type="button" onClick={() => setIsCreatingPlaylist(false)} className="create-playlist-cancel"><ChevronLeft size={18} /></button>
-                    </form>
-                  )}
-
-                  {likedSongs.length > 0 && (
-                    <div className="playlist-card liked-songs-card" onClick={() => setSelectedPlaylistId('liked')}>
-                      <div className="playlist-card-cover liked-cover">
-                        <Heart size={24} fill="currentColor" />
-                      </div>
-                      <div className="playlist-card-info">
-                        <h3 className="playlist-card-name">Liked Songs</h3>
-                        <p className="playlist-card-count">{likedSongs.length} songs</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="playlists-divider" />
-
-                  {playlists.length === 0 ? (
-                    <div className="playlists-empty">
-                      <ListMusic size={48} />
-                      <p>No playlists yet</p>
-                      <span>Create one to start adding your favorite songs</span>
-                    </div>
-                  ) : (
-                    <div className="playlists-list">
-                      {playlists.map(p => (
-                        <div key={p.id} className="playlist-card" onClick={() => setSelectedPlaylistId(p.id)}>
-                          <div className="playlist-card-cover">
-                            <Library size={24} />
-                          </div>
-                          <div className="playlist-card-info">
-                            <h3 className="playlist-card-name">{p.name}</h3>
-                            <p className="playlist-card-count">{p.songs.length} songs</p>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); deletePlaylist(p.id) }} className="playlist-card-delete">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {recentlyPlayed.length > 0 && (
-                    <div className="recent-section">
-                      <div className="recent-section-header">
-                        <Clock size={16} />
-                        <h3 className="recent-title">Recently Played</h3>
-                      </div>
-                      <div className="recent-list">
-                        {recentlyPlayed.map(song => (
-                          <div key={song.id} className="recent-item" onClick={() => {
-                            addToRecent(song)
-                            setQueue([song])
-                            setCurrentTrackIndex(0)
-                            navigateTo('player')
-                            actuallyPlay(song)
-                          }}>
-                            <img src={song.thumbnail} alt="" className="recent-thumb" />
-                            <div className="recent-info">
-                              <p className="recent-song-title">{song.title}</p>
-                              <p className="recent-song-artist">{song.artist}</p>
+                    {isLoadingTrending ? (
+                      <div className="explore-loading"><div className="spinner" /><span>Loading catalog...</span></div>
+                    ) : trendingSongs.length > 0 ? (
+                      <div className="explore-grid">
+                        {trendingSongs.map(song => (
+                          <div key={song.id}
+                            className="explore-card"
+                            onClick={() => playSong(song)}
+                            onPointerDown={() => handlePointerDown(song)}
+                            onPointerUp={handlePointerUp}
+                            onPointerLeave={handlePointerLeave}
+                          >
+                            <div className="explore-card-img">
+                              <img src={song.thumbnail} alt={song.title} />
                             </div>
-                            <button
-                              className={`like-btn-sm${isLiked(song) ? ' liked' : ''}`}
-                              onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
-                            >
-                              <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
-                            </button>
+                            <div className="explore-card-info">
+                              <div className="explore-card-title-row">
+                                <p className="explore-card-title">{song.title}</p>
+                                <button
+                                  className={`explore-like-btn${isLiked(song) ? ' liked' : ''}`}
+                                  onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                                >
+                                  <Heart size={13} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                                </button>
+                              </div>
+                              <p className="explore-card-artist">{song.artist}</p>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'explore' && (
-            <div className="explore-view">
-              {showTrending ? (
-                <>
-                  <div className="explore-header-row">
-                    <h2 className="explore-title">Trending Now</h2>
-                  </div>
-                  {isLoadingTrending ? (
-                    <div className="explore-loading"><div className="spinner" /></div>
-                  ) : trendingSongs.length > 0 ? (
-                    <div className="explore-grid">
-                      {trendingSongs.map(song => (
-                        <div key={song.id}
-                          className="explore-card"
-                          onClick={() => playSong(song)}
-                          onPointerDown={() => handlePointerDown(song)}
-                          onPointerUp={handlePointerUp}
-                          onPointerLeave={handlePointerLeave}
-                        >
-                          <div className="explore-card-img">
-                            <img src={song.thumbnail} alt={song.title} />
-                          </div>
-                          <div className="explore-card-info">
-                            <div className="explore-card-title-row">
-                              <p className="explore-card-title">{song.title}</p>
-                              <button
-                                className={`explore-like-btn${isLiked(song) ? ' liked' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
-                              >
-                                <Heart size={14} fill={isLiked(song) ? 'currentColor' : 'none'} />
-                              </button>
-                            </div>
-                            <p className="explore-card-artist">{song.artist}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="explore-empty">Could not load trending songs. Check your YouTube API key.</p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="explore-back-row">
-                    <button onClick={handleBackFromSearch} className="explore-back-btn">
-                      <ArrowLeft size={18} />
-                      <span>Trending</span>
-                    </button>
-                    <span className="explore-query-label">"{searchQuery}"</span>
-                  </div>
-                  {isSearching ? (
-                    <div className="explore-loading"><div className="spinner" /></div>
-                  ) : searchResults.length > 0 ? (
-                    <>
-                      {getMatchingPlaylists(searchQuery).length > 0 && getMatchingPlaylists(searchQuery).map(pl => (
-                        <div key={pl.id} className="search-playlist-suggestion" onClick={() => handleCategorySearch(pl)}>
-                          <span className="search-playlist-suggestion-icon">{pl.icon}</span>
-                          <div className="search-playlist-suggestion-info">
-                            <div className="search-playlist-suggestion-title">{pl.name} Playlist</div>
-                            <div className="search-playlist-suggestion-desc">Listen to top {pl.name.toLowerCase()} songs</div>
-                          </div>
-                          <ChevronRight size={20} className="search-playlist-suggestion-arrow" />
-                        </div>
-                      ))}
-                      <div className="explore-grid">
-                      {searchResults.map(result => (
-                        <div key={result.id}
-                          className="explore-card"
-                          onClick={() => playSong(result)}
-                          onPointerDown={() => handlePointerDown(result)}
-                          onPointerUp={handlePointerUp}
-                          onPointerLeave={handlePointerLeave}
-                        >
-                          <div className="explore-card-img">
-                            <img src={result.thumbnail} alt={result.title} />
-                          </div>
-                          <div className="explore-card-info">
-                            <div className="explore-card-title-row">
-                              <p className="explore-card-title">{result.title}</p>
-                              <button
-                                className={`explore-like-btn${isLiked(result) ? ' liked' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); toggleLike(result) }}
-                              >
-                                <Heart size={14} fill={isLiked(result) ? 'currentColor' : 'none'} />
-                              </button>
-                            </div>
-                            <p className="explore-card-artist">{result.artist}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    </>
-                  ) : (
-                    <p className="explore-empty">No results found for "{searchQuery}"</p>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {addToPlaylistTarget && (
-            <div className="modal-overlay" onClick={() => setAddToPlaylistTarget(null)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <h3>Add to Playlist</h3>
-                {playlists.length === 0 ? (
-                  <p className="modal-empty">No playlists yet. Create one first!</p>
+                    ) : (
+                      <p className="explore-empty">Could not load trending songs. Verify your YouTube API key.</p>
+                    )}
+                  </>
                 ) : (
-                  <div className="modal-playlist-list">
-                    {playlists.map(p => (
-                      <button key={p.id} className="modal-playlist-item" onClick={() => addSongToPlaylist(p.id)}>
-                        <Library size={20} />
-                        <span>{p.name}</span>
-                        <span className="modal-song-count">{p.songs.length} songs</span>
+                  <>
+                    <div className="explore-back-row">
+                      <button onClick={handleBackFromSearch} className="explore-back-btn">
+                        <ArrowLeft size={16} />
+                        <span>Back to Catalog</span>
                       </button>
-                    ))}
-                  </div>
+                      <span className="explore-query-label">Results for "{searchQuery}"</span>
+                    </div>
+                    {isSearching ? (
+                      <div className="explore-loading"><div className="spinner" /><span>Searching...</span></div>
+                    ) : searchResults.length > 0 ? (
+                      <div className="explore-grid">
+                        {searchResults.map(result => (
+                          <div key={result.id}
+                            className="explore-card"
+                            onClick={() => playSong(result)}
+                            onPointerDown={() => handlePointerDown(result)}
+                            onPointerUp={handlePointerUp}
+                            onPointerLeave={handlePointerLeave}
+                          >
+                            <div className="explore-card-img">
+                              <img src={result.thumbnail} alt={result.title} />
+                            </div>
+                            <div className="explore-card-info">
+                              <div className="explore-card-title-row">
+                                <p className="explore-card-title">{result.title}</p>
+                                <button
+                                  className={`explore-like-btn${isLiked(result) ? ' liked' : ''}`}
+                                  onClick={(e) => { e.stopPropagation(); toggleLike(result) }}
+                                >
+                                  <Heart size={13} fill={isLiked(result) ? 'currentColor' : 'none'} />
+                                </button>
+                              </div>
+                              <p className="explore-card-artist">{result.artist}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="explore-empty">No results found for "{searchQuery}"</p>
+                    )}
+                  </>
                 )}
-                <button onClick={() => setAddToPlaylistTarget(null)} className="modal-close-btn">Cancel</button>
+              </div>
+            )}
+
+            {addToPlaylistTarget && (
+              <div className="modal-overlay" onClick={() => setAddToPlaylistTarget(null)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>Add to Collection</h3>
+                    <button onClick={() => setAddToPlaylistTarget(null)} className="modal-x-btn"><X size={16} /></button>
+                  </div>
+                  {playlists.length === 0 ? (
+                    <p className="modal-empty">No playlists created yet. Create one first.</p>
+                  ) : (
+                    <div className="modal-playlist-list">
+                      {playlists.map(p => (
+                        <button key={p.id} className="modal-playlist-item" onClick={() => addSongToPlaylist(p.id)}>
+                          <Library size={18} />
+                          <span>{p.name}</span>
+                          <span className="modal-song-count">{p.songs.length} tracks</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => setAddToPlaylistTarget(null)} className="modal-close-btn">Cancel</button>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Minimalist Editorial Audio Dock for Desktop & Tablet */}
+          {currentTrack && activeTab !== 'player' && (
+            <div className="persistent-audio-dock">
+              <div className="dock-track-info" onClick={() => navigateTo('player')}>
+                <img src={currentTrack.thumbnail} alt="" className="dock-thumb" onError={handleImgError} decoding="async" />
+                <div className="dock-text">
+                  <p className="dock-title">{currentTrack.title}</p>
+                  <p className="dock-artist">{currentTrack.artist}</p>
+                </div>
+              </div>
+
+              <div className="dock-center-controls">
+                <div className="dock-ctrl-btns">
+                  <button onClick={handlePrev} className="dock-btn-sm" title="Previous">
+                    <SkipBack size={16} fill="currentColor" />
+                  </button>
+                  <button onClick={togglePlayPause} className="dock-btn-play" title={isPlaying ? 'Pause' : 'Play'}>
+                    {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                  </button>
+                  <button onClick={handleNext} className="dock-btn-sm" title="Next">
+                    <SkipForward size={16} fill="currentColor" />
+                  </button>
+                </div>
+                <div className="dock-seek-wrap">
+                  <span className="dock-time">{formatTime(currentTime)}</span>
+                  <input
+                    type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek}
+                    className="dock-seek-bar"
+                    style={{
+                      background: `linear-gradient(to right, var(--text-main) ${(currentTime / (duration || 1)) * 100}%, var(--border-color) ${(currentTime / (duration || 1)) * 100}%)`
+                    }}
+                  />
+                  <span className="dock-time">{formatTime(duration)}</span>
+                </div>
+              </div>
+
+              <div className="dock-right-actions">
+                <button
+                  onClick={() => toggleLike(currentTrack)}
+                  className={`dock-action-btn${isLiked(currentTrack) ? ' liked' : ''}`}
+                  title={isLiked(currentTrack) ? 'Unlike' : 'Like'}
+                >
+                  <Heart size={16} fill={isLiked(currentTrack) ? 'currentColor' : 'none'} />
+                </button>
+                <button
+                  onClick={handleRepeatToggle}
+                  className={`dock-action-btn${repeatMode !== 'none' ? ' active' : ''}`}
+                  title="Repeat mode"
+                >
+                  {repeatMode === 'one' ? <Repeat1 size={16} /> : <Repeat size={16} />}
+                </button>
+                <button onClick={() => navigateTo('player')} className="dock-action-btn dock-expand-btn" title="Open Full Player">
+                  <Maximize2 size={14} />
+                  <span>Room</span>
+                </button>
               </div>
             </div>
           )}
-        </main>
 
-        <nav className="bottom-nav">
-          <div className="bottom-nav-inner">
-            <button onClick={() => navigateTo('welcome')} className={`nav-btn${activeTab === 'welcome' ? ' active' : ''}`}>
-              <House size={24} />
-            </button>
-            <button onClick={() => { navigateTo('explore'); fetchTrendingSongs() }} className={`nav-btn${activeTab === 'explore' ? ' active' : ''}`}>
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-svg-icon"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-            </button>
-            <button onClick={() => navigateTo('player')} className={`nav-btn${activeTab === 'player' ? ' active' : ''}`}>
-              <Music2 size={24} />
-            </button>
-            <button onClick={() => navigateTo('playlists')} className={`nav-btn${activeTab === 'playlists' ? ' active' : ''}`}>
-              <ListMusic size={24} />
-            </button>
+          {/* Minimalist Mobile Mini-Player for Android */}
+          {currentTrack && activeTab !== 'player' && (
+            <div className="mobile-mini-player" onClick={() => navigateTo('player')}>
+              <img src={currentTrack.thumbnail} alt="" className="mini-thumb" onError={handleImgError} decoding="async" />
+              <div className="mini-info">
+                <p className="mini-title">{currentTrack.title}</p>
+                <p className="mini-artist">{currentTrack.artist}</p>
+              </div>
+              <div className="mini-actions" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => toggleLike(currentTrack)}
+                  className={`mini-like-btn${isLiked(currentTrack) ? ' liked' : ''}`}
+                >
+                  <Heart size={15} fill={isLiked(currentTrack) ? 'currentColor' : 'none'} />
+                </button>
+                <button onClick={togglePlayPause} className="mini-play-btn">
+                  {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Floating Pill Bottom Navigation Dock (Android & Mobile) */}
+          <nav className="bottom-nav" aria-label="Navigation Dock">
+            <div className="bottom-nav-inner">
+              <button
+                onClick={() => navigateTo('welcome')}
+                className={`nav-btn${activeTab === 'welcome' ? ' active' : ''}`}
+                aria-label="Home"
+              >
+                <House size={18} />
+                {activeTab === 'welcome' && <span className="nav-label">Home</span>}
+              </button>
+              <button
+                onClick={() => { navigateTo('explore'); fetchTrendingSongs() }}
+                className={`nav-btn${activeTab === 'explore' ? ' active' : ''}`}
+                aria-label="Explore"
+              >
+                <Search size={18} />
+                {activeTab === 'explore' && <span className="nav-label">Explore</span>}
+              </button>
+              <button
+                onClick={() => navigateTo('player')}
+                className={`nav-btn${activeTab === 'player' ? ' active' : ''}`}
+                aria-label="Listening Room"
+              >
+                <Music2 size={18} />
+                {isPlaying && activeTab !== 'player' && <span className="nav-dot-active" />}
+                {activeTab === 'player' && <span className="nav-label">Room</span>}
+              </button>
+              <button
+                onClick={() => navigateTo('playlists')}
+                className={`nav-btn${activeTab === 'playlists' ? ' active' : ''}`}
+                aria-label="Library"
+              >
+                <ListMusic size={18} />
+                {activeTab === 'playlists' && <span className="nav-label">Library</span>}
+              </button>
+              <button
+                onClick={() => setShowCoffeeModal(true)}
+                className={`nav-btn nav-btn-coffee${showCoffeeModal ? ' active' : ''}`}
+                title="Support Dhun"
+                aria-label="Support"
+              >
+                <Coffee size={18} />
+                {showCoffeeModal && <span className="nav-label">Support</span>}
+              </button>
+            </div>
+          </nav>
+        </div> {/* close .app-main-area */}
+
+        {/* Coffee Modal */}
+        {showCoffeeModal && (
+          <div className="coffee-modal-overlay" onClick={() => setShowCoffeeModal(false)}>
+            <div className="coffee-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="coffee-modal-title">Support Dhun</h3>
+                <button className="coffee-modal-close" onClick={() => setShowCoffeeModal(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="coffee-modal-content">
+                <p className="coffee-modal-subtitle">Direct patronage for independent audio software</p>
+                <div className="coffee-qr-wrap">
+                  <img src={qrCode} alt="Scan to pay" className="coffee-qr-img" />
+                </div>
+                <p className="coffee-modal-hint">Scan via any UPI / Payment application</p>
+              </div>
+            </div>
           </div>
-        </nav>
+        )}
+
+        {/* Settings Modal */}
+        {showSettingsModal && (
+          <div className="coffee-modal-overlay" onClick={() => setShowSettingsModal(false)}>
+            <div className="coffee-modal settings-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="coffee-modal-title">Settings</h3>
+                <button className="coffee-modal-close" onClick={() => setShowSettingsModal(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="coffee-modal-content">
+                <p className="coffee-modal-subtitle">YouTube Data API Configuration</p>
+                <div className="settings-api-section">
+                  <label className="settings-label">Personal API Key</label>
+                  <input
+                    type="password"
+                    className="settings-api-input"
+                    placeholder="AIzaSy..."
+                    value={settingsApiKey}
+                    onChange={(e) => setSettingsApiKey(e.target.value)}
+                  />
+                  <p className="settings-hint">
+                    Obtain a key from{' '}
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">
+                      Google Cloud Console
+                    </a>
+                    . Enable "YouTube Data API v3".
+                  </p>
+                  {customApiKey && (
+                    <div className="settings-status-badge">
+                      <span className="status-dot-green" />
+                      <span>Custom API key configured</span>
+                    </div>
+                  )}
+                </div>
+                <div className="settings-actions">
+                  <button className="settings-btn settings-btn-save" onClick={saveApiKey}>
+                    Save Changes
+                  </button>
+                  {customApiKey && (
+                    <button
+                      className="settings-btn settings-btn-clear"
+                      onClick={() => { setSettingsApiKey(''); localStorage.removeItem('dhun_youtube_api_key'); setCustomApiKey(''); setShowSettingsModal(false) }}
+                    >
+                      Use Default
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
