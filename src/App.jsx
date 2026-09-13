@@ -135,6 +135,17 @@ export default function App() {
   const [indianRecs, setIndianRecs] = useState([])
   const [isLoadingIndianRecs, setIsLoadingIndianRecs] = useState(false)
   const [indianRecCategories, setIndianRecCategories] = useState([])
+  const [showMoreQuickPicks, setShowMoreQuickPicks] = useState(false)
+  const [showAllCategories, setShowAllCategories] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState({})
+  const [selectedHomeGenre, setSelectedHomeGenre] = useState('All')
+
+  const toggleCategoryExpand = (catIdx) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [catIdx]: !prev[catIdx]
+    }))
+  }
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -1050,10 +1061,12 @@ export default function App() {
         { id: 'hT_nvWreIhg', title: 'OneRepublic - Counting Stars', artist: 'OneRepublic', thumbnail: 'https://i.ytimg.com/vi/hT_nvWreIhg/hqdefault.jpg' },
         { id: 'kJQP7kiw5Fk', title: 'Luis Fonsi - Despacito ft. Daddy Yankee', artist: 'Luis Fonsi', thumbnail: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg' },
         { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen Official', thumbnail: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg' },
+        { id: '09R8_2nJtjg', title: 'Maroon 5 - Sugar', artist: 'Maroon 5', thumbnail: 'https://i.ytimg.com/vi/09R8_2nJtjg/hqdefault.jpg' },
+        { id: 'astISOttCQ0', title: 'The Chainsmokers & Coldplay - Something Just Like This', artist: 'The Chainsmokers', thumbnail: 'https://i.ytimg.com/vi/astISOttCQ0/hqdefault.jpg' },
       ]
     },
     {
-      name: 'Modern Bass & Rhythm',
+      name: 'Modern Bass & Electronic',
       query: 'electronic dance bass workout hits',
       color: '#27272a',
       songs: [
@@ -1061,57 +1074,105 @@ export default function App() {
         { id: 'ALZHF5UqnU4', title: 'Marshmello - Alone', artist: 'Marshmello', thumbnail: 'https://i.ytimg.com/vi/ALZHF5UqnU4/hqdefault.jpg' },
         { id: '60ItHLz5WEA', title: 'Alan Walker - Faded', artist: 'Alan Walker', thumbnail: 'https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg' },
         { id: 'papuvlVeZg8', title: 'Clean Bandit - Rather Be ft. Jess Glynne', artist: 'Clean Bandit', thumbnail: 'https://i.ytimg.com/vi/papuvlVeZg8/hqdefault.jpg' },
+        { id: 'IcrbM1l_BoI', title: 'Avicii - Wake Me Up', artist: 'Avicii', thumbnail: 'https://i.ytimg.com/vi/IcrbM1l_BoI/hqdefault.jpg' },
+        { id: '_ovdm2yX4MA', title: 'Avicii - The Nights', artist: 'Avicii', thumbnail: 'https://i.ytimg.com/vi/_ovdm2yX4MA/hqdefault.jpg' },
+        { id: 'kOkQ4T5WO9E', title: 'Calvin Harris - Summer', artist: 'Calvin Harris', thumbnail: 'https://i.ytimg.com/vi/kOkQ4T5WO9E/hqdefault.jpg' },
+        { id: 'fLexgOxsZu0', title: "Bruno Mars - That's What I Like", artist: 'Bruno Mars', thumbnail: 'https://i.ytimg.com/vi/fLexgOxsZu0/hqdefault.jpg' },
       ]
     },
     {
-      name: 'Acoustic & Lo-Fi',
+      name: 'Acoustic & Warm Melodies',
       query: 'acoustic chill mellow melodic songs',
       color: '#3f3f46',
       songs: [
         { id: '2Vv-BfVoq4g', title: 'Ed Sheeran - Perfect', artist: 'Ed Sheeran', thumbnail: 'https://i.ytimg.com/vi/2Vv-BfVoq4g/hqdefault.jpg' },
         { id: 'YQHsXMglC9A', title: 'Adele - Hello', artist: 'Adele', thumbnail: 'https://i.ytimg.com/vi/YQHsXMglC9A/hqdefault.jpg' },
         { id: 'RgKAFK5djSk', title: 'Wiz Khalifa - See You Again ft. Charlie Puth', artist: 'Wiz Khalifa', thumbnail: 'https://i.ytimg.com/vi/RgKAFK5djSk/hqdefault.jpg' },
-        { id: '09R8_2nJtjg', title: 'Maroon 5 - Sugar', artist: 'Maroon 5', thumbnail: 'https://i.ytimg.com/vi/09R8_2nJtjg/hqdefault.jpg' },
+        { id: 'RBumgq5yVrA', title: 'Passenger - Let Her Go', artist: 'Passenger', thumbnail: 'https://i.ytimg.com/vi/RBumgq5yVrA/hqdefault.jpg' },
+        { id: 'rtOvBOTyX00', title: 'Christina Perri - A Thousand Years', artist: 'Christina Perri', thumbnail: 'https://i.ytimg.com/vi/rtOvBOTyX00/hqdefault.jpg' },
+        { id: 'lp-EO5I60KA', title: 'Ed Sheeran - Thinking Out Loud', artist: 'Ed Sheeran', thumbnail: 'https://i.ytimg.com/vi/lp-EO5I60KA/hqdefault.jpg' },
+        { id: 'hLQl3WQQoQ0', title: 'Adele - Someone Like You', artist: 'Adele', thumbnail: 'https://i.ytimg.com/vi/hLQl3WQQoQ0/hqdefault.jpg' },
+        { id: 'SlPhMPnQ58k', title: 'Maroon 5 - Memories', artist: 'Maroon 5', thumbnail: 'https://i.ytimg.com/vi/SlPhMPnQ58k/hqdefault.jpg' },
       ]
     },
     {
-      name: 'Global Melodies',
+      name: 'Global Pop Icons',
       query: 'global pop latin dance chart hits',
       color: '#52525b',
       songs: [
         { id: 'k2qgadSvNyU', title: 'Dua Lipa - New Rules', artist: 'Dua Lipa', thumbnail: 'https://i.ytimg.com/vi/k2qgadSvNyU/hqdefault.jpg' },
         { id: 'CevxZvSJLk8', title: 'Katy Perry - Roar', artist: 'Katy Perry', thumbnail: 'https://i.ytimg.com/vi/CevxZvSJLk8/hqdefault.jpg' },
-        { id: 'kJQP7kiw5Fk', title: 'Luis Fonsi - Despacito', artist: 'Luis Fonsi', thumbnail: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg' },
-        { id: 'OPf0YbXqDm0', title: 'Mark Ronson - Uptown Funk', artist: 'Mark Ronson', thumbnail: 'https://i.ytimg.com/vi/OPf0YbXqDm0/hqdefault.jpg' },
+        { id: 'nYh-n7EOtMA', title: 'Sia - Chandelier', artist: 'Sia', thumbnail: 'https://i.ytimg.com/vi/nYh-n7EOtMA/hqdefault.jpg' },
+        { id: 'nfWlot6h_JM', title: 'Taylor Swift - Shake It Off', artist: 'Taylor Swift', thumbnail: 'https://i.ytimg.com/vi/nfWlot6h_JM/hqdefault.jpg' },
+        { id: 'e-ORhEE9VVg', title: 'Taylor Swift - Blank Space', artist: 'Taylor Swift', thumbnail: 'https://i.ytimg.com/vi/e-ORhEE9VVg/hqdefault.jpg' },
+        { id: 'q0hyYWKXF0Q', title: 'Tones and I - Dance Monkey', artist: 'Tones and I', thumbnail: 'https://i.ytimg.com/vi/q0hyYWKXF0Q/hqdefault.jpg' },
+        { id: 'V1Pl8CzNzCw', title: 'Billie Eilish - bad guy', artist: 'Billie Eilish', thumbnail: 'https://i.ytimg.com/vi/V1Pl8CzNzCw/hqdefault.jpg' },
+        { id: 'viimfQi_pUw', title: 'Billie Eilish & Khalid - lovely', artist: 'Billie Eilish', thumbnail: 'https://i.ytimg.com/vi/viimfQi_pUw/hqdefault.jpg' },
       ]
     },
     {
-      name: 'Atmospheric Indie',
+      name: 'Atmospheric Rock & Anthems',
       query: 'indie rock alternative anthem hits',
       color: '#71717a',
       songs: [
         { id: '7wtfhZwyrcc', title: 'Imagine Dragons - Believer', artist: 'Imagine Dragons', thumbnail: 'https://i.ytimg.com/vi/7wtfhZwyrcc/hqdefault.jpg' },
         { id: '1w7OgIMMRc4', title: "Guns N' Roses - Sweet Child O' Mine", artist: "Guns N' Roses", thumbnail: 'https://i.ytimg.com/vi/1w7OgIMMRc4/hqdefault.jpg' },
+        { id: 'gNi_6U5Pm_o', title: 'Coldplay - Viva La Vida', artist: 'Coldplay', thumbnail: 'https://i.ytimg.com/vi/gNi_6U5Pm_o/hqdefault.jpg' },
+        { id: '1G4isv_Fylg', title: 'Coldplay - Paradise', artist: 'Coldplay', thumbnail: 'https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg' },
+        { id: 'YykjpeuMNEk', title: 'Coldplay - Hymn For The Weekend', artist: 'Coldplay', thumbnail: 'https://i.ytimg.com/vi/YykjpeuMNEk/hqdefault.jpg' },
         { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen Official', thumbnail: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg' },
+        { id: 'hT_nvWreIhg', title: 'OneRepublic - Counting Stars', artist: 'OneRepublic', thumbnail: 'https://i.ytimg.com/vi/hT_nvWreIhg/hqdefault.jpg' },
+        { id: 'astISOttCQ0', title: 'The Chainsmokers & Coldplay - Something Just Like This', artist: 'The Chainsmokers', thumbnail: 'https://i.ytimg.com/vi/astISOttCQ0/hqdefault.jpg' },
       ]
     },
     {
-      name: 'Lyrical Hip-Hop',
+      name: 'Hip-Hop & Urban Anthems',
       query: 'top hip hop rap timeless anthems',
       color: '#a1a1aa',
       songs: [
         { id: 'tvTRZJ-4EyI', title: 'Kendrick Lamar - HUMBLE.', artist: 'Kendrick Lamar', thumbnail: 'https://i.ytimg.com/vi/tvTRZJ-4EyI/hqdefault.jpg' },
         { id: 'uelHwf8o7_U', title: 'Eminem - Love The Way You Lie ft. Rihanna', artist: 'Eminem', thumbnail: 'https://i.ytimg.com/vi/uelHwf8o7_U/hqdefault.jpg' },
+        { id: '2zToEPpFEN8', title: 'The Weeknd - Starboy ft. Daft Punk', artist: 'The Weeknd', thumbnail: 'https://i.ytimg.com/vi/2zToEPpFEN8/hqdefault.jpg' },
+        { id: 'Dkk9gvTmCXY', title: 'Post Malone - Circles', artist: 'Post Malone', thumbnail: 'https://i.ytimg.com/vi/Dkk9gvTmCXY/hqdefault.jpg' },
+        { id: 'YVkUvmDQ3HY', title: 'Eminem - Without Me', artist: 'Eminem', thumbnail: 'https://i.ytimg.com/vi/YVkUvmDQ3HY/hqdefault.jpg' },
         { id: 'RgKAFK5djSk', title: 'Wiz Khalifa - See You Again', artist: 'Wiz Khalifa', thumbnail: 'https://i.ytimg.com/vi/RgKAFK5djSk/hqdefault.jpg' },
+        { id: '4NRXx6U8ABQ', title: 'The Weeknd - Blinding Lights', artist: 'The Weeknd', thumbnail: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg' },
+        { id: 'OPf0YbXqDm0', title: 'Mark Ronson - Uptown Funk', artist: 'Mark Ronson', thumbnail: 'https://i.ytimg.com/vi/OPf0YbXqDm0/hqdefault.jpg' },
+      ]
+    },
+    {
+      name: 'Soulful & South Asian Hits',
+      query: 'popular hindi bollywood melodies hits',
+      color: '#e4e4e7',
+      songs: [
+        { id: 'JFcgOboQZ08', title: 'Arijit Singh - Tum Hi Ho', artist: 'Arijit Singh', thumbnail: 'https://i.ytimg.com/vi/JFcgOboQZ08/hqdefault.jpg' },
+        { id: 'BddP6PYo2gs', title: 'Arijit Singh - Kesariya', artist: 'Arijit Singh', thumbnail: 'https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg' },
+        { id: 'ilNt2bikxDI', title: 'Jubin Nautiyal - Raataan Lambiyan', artist: 'Jubin Nautiyal', thumbnail: 'https://i.ytimg.com/vi/ilNt2bikxDI/hqdefault.jpg' },
+        { id: 'VuG7ge_8I2Y', title: 'Ali Sethi & Shae Gill - Pasoori', artist: 'Coke Studio', thumbnail: 'https://i.ytimg.com/vi/VuG7ge_8I2Y/hqdefault.jpg' },
+        { id: 'k4yXQkG2s1E', title: 'Arijit Singh - Shayad', artist: 'Arijit Singh', thumbnail: 'https://i.ytimg.com/vi/k4yXQkG2s1E/hqdefault.jpg' },
+        { id: '2Vv-BfVoq4g', title: 'Ed Sheeran - Perfect', artist: 'Ed Sheeran', thumbnail: 'https://i.ytimg.com/vi/2Vv-BfVoq4g/hqdefault.jpg' },
+        { id: 'hLQl3WQQoQ0', title: 'Adele - Someone Like You', artist: 'Adele', thumbnail: 'https://i.ytimg.com/vi/hLQl3WQQoQ0/hqdefault.jpg' },
+        { id: 'RBumgq5yVrA', title: 'Passenger - Let Her Go', artist: 'Passenger', thumbnail: 'https://i.ytimg.com/vi/RBumgq5yVrA/hqdefault.jpg' },
       ]
     }
+  ]
+
+  const HOME_GENRES = [
+    { id: 'All', label: 'All Hits' },
+    { id: 'Featured Selections', label: 'Trending Hits' },
+    { id: 'Modern Bass & Electronic', label: 'Electronic & Bass' },
+    { id: 'Acoustic & Warm Melodies', label: 'Acoustic & Chill' },
+    { id: 'Global Pop Icons', label: 'Pop Icons' },
+    { id: 'Atmospheric Rock & Anthems', label: 'Rock Anthems' },
+    { id: 'Hip-Hop & Urban Anthems', label: 'Hip-Hop & Rap' },
+    { id: 'Soulful & South Asian Hits', label: 'Soulful Bollywood' },
   ]
 
   const fetchGenZRecommendations = async () => {
     if (recommendationsFetchingRef.current) return
     recommendationsFetchingRef.current = true
     setIsLoadingIndianRecs(true)
-    const CACHE_KEY = 'dhun_genz_recommendations_v3'
+    const CACHE_KEY = 'dhun_genz_recommendations_v4'
     try {
       const cached = sessionStorage.getItem(CACHE_KEY)
       if (cached) {
@@ -1201,8 +1262,8 @@ export default function App() {
     const seen = new Set()
     const picks = []
     const addUnique = (songs) => {
-      for (const s of songs) {
-        if (!seen.has(s.id) && picks.length < 8) {
+      for (const s of songs || []) {
+        if (!seen.has(s.id) && picks.length < 24) {
           seen.add(s.id)
           picks.push(s)
         }
@@ -1216,8 +1277,9 @@ export default function App() {
     addUnique(trendingSongs)
     addUnique(likedSongs)
     addUnique(recentlyPlayed)
+    addUnique(FALLBACK_CATEGORIES.flatMap(c => c.songs))
 
-    return picks.sort(() => Math.random() - 0.5).slice(0, 8)
+    return picks.slice(0, 24)
   }, [recentlyPlayed, likedSongs, trendingSongs])
 
   const buildRecommendedPlaylists = useCallback(() => {
@@ -1553,6 +1615,26 @@ export default function App() {
                   </div>
                 </section>
 
+                {/* Quick Genre Vibe Pills */}
+                <div className="home-genre-bar-container">
+                  <div className="home-genre-bar">
+                    {HOME_GENRES.map(g => (
+                      <button
+                        key={g.id}
+                        className={`home-genre-pill ${selectedHomeGenre === g.id ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedHomeGenre(g.id)
+                          if (g.id !== 'All') {
+                            setShowAllCategories(true)
+                          }
+                        }}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {quickPicks.length > 0 && (
                   <section className="home-section">
                     <div className="home-section-header">
@@ -1564,7 +1646,7 @@ export default function App() {
                     </div>
                     <div className="quick-picks-scroll">
                       <div className="quick-picks-track">
-                        {quickPicks.map((song, idx) => (
+                        {(showMoreQuickPicks ? quickPicks.slice(0, 16) : quickPicks.slice(0, 8)).map((song, idx) => (
                           <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
                             <div className="quick-pick-thumb-wrap">
                               <img src={song.thumbnail} alt={song.title} className="quick-pick-img" onError={handleImgError} decoding="async" />
@@ -1583,6 +1665,16 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+                    {quickPicks.length > 8 && (
+                      <div className="home-more-action-row">
+                        <button
+                          className="home-show-more-pill"
+                          onClick={() => setShowMoreQuickPicks(prev => !prev)}
+                        >
+                          {showMoreQuickPicks ? 'Show Less' : `Show More Quick Picks (+${Math.min(8, quickPicks.length - 8)})`}
+                        </button>
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -1634,9 +1726,17 @@ export default function App() {
                   <div className="home-section-header">
                     <div className="home-section-title-wrap">
                       <span className="home-section-number">03</span>
-                      <h2 className="home-section-title">Featured Channels</h2>
+                      <h2 className="home-section-title">
+                        {selectedHomeGenre === 'All' ? 'Featured Channels' : selectedHomeGenre}
+                      </h2>
                     </div>
-                    <span className="home-section-tag">Editorial</span>
+                    {selectedHomeGenre !== 'All' ? (
+                      <button className="home-section-link" onClick={() => setSelectedHomeGenre('All')}>
+                        Show All Channels ➔
+                      </button>
+                    ) : (
+                      <span className="home-section-tag">Editorial</span>
+                    )}
                   </div>
 
                   {isLoadingIndianRecs ? (
@@ -1645,96 +1745,137 @@ export default function App() {
                       <span>Loading curated selections...</span>
                     </div>
                   ) : indianRecCategories.length > 0 ? (
-                    <>
-                      <div className="rec-categories-grid">
-                        {indianRecCategories.slice(0, 6).map((category, catIdx) => (
-                          <div
-                            key={catIdx}
-                            className="rec-category-card"
-                            onClick={() => {
-                              if (category.songs.length === 0) return
-                              addToRecent(category.songs[0])
-                              setQueue(category.songs)
-                              setCurrentTrackIndex(0)
-                              actuallyPlay(category.songs[0])
-                            }}
-                          >
-                            <div className="rec-category-collage">
-                              <div className="rec-category-collage-inner">
-                                {category.songs.slice(0, 4).map((song, sIdx) => (
-                                  <div key={sIdx} className="rec-category-collage-item">
-                                    <img src={song.thumbnail} alt="" onError={handleImgError} loading="lazy" decoding="async" />
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="rec-category-collage-overlay">
-                                <div className="rec-category-play-btn">
-                                  <PlayIcon size={18} fill="currentColor" />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="rec-category-info">
-                              <h3 className="rec-category-name">{category.name}</h3>
-                              <p className="rec-category-meta">{category.songs.length} curated tracks</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                    (() => {
+                      const displayedCards = selectedHomeGenre === 'All'
+                        ? (showAllCategories ? indianRecCategories : indianRecCategories.slice(0, 4))
+                        : indianRecCategories.filter(c => c.name === selectedHomeGenre || c.name.toLowerCase().includes(selectedHomeGenre.toLowerCase()))
 
-                      <div className="rec-expanded-songs">
-                        {indianRecCategories.slice(0, 3).map((category, catIdx) => (
-                          <div key={catIdx} className="rec-song-group">
-                            <div className="rec-song-group-header">
-                              <span className="rec-song-group-bullet" />
-                              <h4 className="rec-song-group-title">{category.name}</h4>
-                            </div>
-                            <div className="rec-song-list">
-                              {category.songs.slice(0, 6).map((song, songIdx) => (
-                                <div
-                                  key={song.id}
-                                  className="rec-song-item"
-                                  onClick={() => {
-                                    if (isLongPress.current) {
-                                      isLongPress.current = false
-                                      return
-                                    }
-                                    addToRecent(song)
-                                    setQueue(category.songs)
-                                    setCurrentTrackIndex(songIdx)
-                                    actuallyPlay(song)
-                                  }}
-                                  onPointerDown={() => handlePointerDown(song)}
-                                  onPointerUp={handlePointerUp}
-                                  onPointerLeave={handlePointerLeave}
-                                >
-                                  <div className="rec-song-thumb-wrap">
-                                    <img src={song.thumbnail} alt="" className="rec-song-thumb" onError={handleImgError} decoding="async" />
-                                    <div className="rec-song-overlay">
-                                      <div className="rec-song-play-btn">
-                                        <PlayIcon size={14} fill="currentColor" />
+                      const displayedSongGroups = selectedHomeGenre === 'All'
+                        ? (showAllCategories ? indianRecCategories : indianRecCategories.slice(0, 3))
+                        : indianRecCategories.filter(c => c.name === selectedHomeGenre || c.name.toLowerCase().includes(selectedHomeGenre.toLowerCase()))
+
+                      return (
+                        <>
+                          <div className="rec-categories-grid">
+                            {displayedCards.map((category, catIdx) => (
+                              <div
+                                key={catIdx}
+                                className="rec-category-card"
+                                onClick={() => {
+                                  if (category.songs.length === 0) return
+                                  addToRecent(category.songs[0])
+                                  setQueue(category.songs)
+                                  setCurrentTrackIndex(0)
+                                  actuallyPlay(category.songs[0])
+                                }}
+                              >
+                                <div className="rec-category-collage">
+                                  <div className="rec-category-collage-inner">
+                                    {category.songs.slice(0, 4).map((song, sIdx) => (
+                                      <div key={sIdx} className="rec-category-collage-item">
+                                        <img src={song.thumbnail} alt="" onError={handleImgError} loading="lazy" decoding="async" />
                                       </div>
+                                    ))}
+                                  </div>
+                                  <div className="rec-category-collage-overlay">
+                                    <div className="rec-category-play-btn">
+                                      <PlayIcon size={18} fill="currentColor" />
                                     </div>
                                   </div>
-                                  <div className="rec-song-details">
-                                    <p className="rec-song-title">{song.title}</p>
-                                    <p className="rec-song-artist">{song.artist}</p>
-                                  </div>
-                                  <div className="rec-song-actions">
-                                    <button
-                                      className={`rec-song-like-btn${isLiked(song) ? ' liked' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
-                                      aria-label={isLiked(song) ? 'Unlike' : 'Like'}
-                                    >
-                                      <Heart size={15} fill={isLiked(song) ? 'currentColor' : 'none'} />
-                                    </button>
-                                  </div>
                                 </div>
-                              ))}
-                            </div>
+                                <div className="rec-category-info">
+                                  <h3 className="rec-category-name">{category.name}</h3>
+                                  <p className="rec-category-meta">{category.songs.length} curated tracks</p>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </>
+
+                          <div className="rec-expanded-songs">
+                            {displayedSongGroups.map((category, catIdx) => {
+                              const isCategoryExpanded = !!expandedCategories[category.name || catIdx]
+                              const songsToShow = isCategoryExpanded ? category.songs : category.songs.slice(0, 6)
+
+                              return (
+                                <div key={catIdx} className="rec-song-group">
+                                  <div className="rec-song-group-header">
+                                    <div className="rec-song-group-header-left">
+                                      <span className="rec-song-group-bullet" />
+                                      <h4 className="rec-song-group-title">{category.name}</h4>
+                                    </div>
+                                    <span className="rec-song-group-badge">{category.songs.length} tracks</span>
+                                  </div>
+                                  <div className="rec-song-list">
+                                    {songsToShow.map((song, songIdx) => (
+                                      <div
+                                        key={song.id}
+                                        className="rec-song-item"
+                                        onClick={() => {
+                                          if (isLongPress.current) {
+                                            isLongPress.current = false
+                                            return
+                                          }
+                                          addToRecent(song)
+                                          setQueue(category.songs)
+                                          setCurrentTrackIndex(songIdx)
+                                          actuallyPlay(song)
+                                        }}
+                                        onPointerDown={() => handlePointerDown(song)}
+                                        onPointerUp={handlePointerUp}
+                                        onPointerLeave={handlePointerLeave}
+                                      >
+                                        <div className="rec-song-thumb-wrap">
+                                          <img src={song.thumbnail} alt="" className="rec-song-thumb" onError={handleImgError} decoding="async" />
+                                          <div className="rec-song-overlay">
+                                            <div className="rec-song-play-btn">
+                                              <PlayIcon size={14} fill="currentColor" />
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="rec-song-details">
+                                          <p className="rec-song-title">{song.title}</p>
+                                          <p className="rec-song-artist">{song.artist}</p>
+                                        </div>
+                                        <div className="rec-song-actions">
+                                          <button
+                                            className={`rec-song-like-btn${isLiked(song) ? ' liked' : ''}`}
+                                            onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                                            aria-label={isLiked(song) ? 'Unlike' : 'Like'}
+                                          >
+                                            <Heart size={15} fill={isLiked(song) ? 'currentColor' : 'none'} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {category.songs.length > 6 && (
+                                    <div className="category-expand-row">
+                                      <button
+                                        className="category-expand-btn"
+                                        onClick={() => toggleCategoryExpand(category.name || catIdx)}
+                                      >
+                                        {isCategoryExpanded ? 'Show Less' : `+${category.songs.length - 6} More Tracks`}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+
+                          {selectedHomeGenre === 'All' && indianRecCategories.length > 3 && (
+                            <div className="home-more-action-row channels-more-row">
+                              <button
+                                className="home-show-more-pill"
+                                onClick={() => setShowAllCategories(prev => !prev)}
+                              >
+                                {showAllCategories ? 'Show Fewer Channels' : `Explore All Channels (${indianRecCategories.length} Categories)`}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()
                   ) : (
                     <div className="home-empty">
                       <div className="home-empty-icon">

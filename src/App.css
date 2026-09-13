@@ -1075,6 +1075,135 @@ input, pre, textarea, select {
   font-weight: 300;
 }
 
+/* Home Genre Filter Bar */
+.home-genre-bar-container {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  margin: -4px 0 10px 0;
+  padding: 4px 0;
+}
+
+.home-genre-bar-container::-webkit-scrollbar {
+  display: none;
+}
+
+.home-genre-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding: 2px 0;
+}
+
+.home-genre-pill {
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 15px;
+  min-height: 36px;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  border: var(--border-hairline);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all var(--duration-fast) var(--ease-out);
+  box-shadow: var(--shadow-sm);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home-genre-pill:hover {
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+  background: var(--bg-hover);
+}
+
+.home-genre-pill:active {
+  transform: scale(0.96);
+}
+
+.home-genre-pill.active {
+  background: var(--text-main);
+  color: var(--bg-surface);
+  border-color: var(--text-main);
+  font-weight: 600;
+}
+
+/* Show More & Expand Actions */
+.home-more-action-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 14px;
+  width: 100%;
+}
+
+.home-show-more-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border: var(--border-hairline);
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home-show-more-pill:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.home-show-more-pill:active {
+  transform: scale(0.97);
+  background: var(--bg-subtle);
+}
+
+.category-expand-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.category-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  min-height: 38px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.category-expand-btn:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.category-expand-btn:active {
+  transform: scale(0.96);
+}
+
 /* Editorial Sections */
 .home-section {
   display: flex;
@@ -1460,9 +1589,17 @@ input, pre, textarea, select {
 .rec-song-group-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding-bottom: 8px;
   border-bottom: var(--border-hairline);
+}
+
+.rec-song-group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .rec-song-group-bullet {
@@ -1470,6 +1607,7 @@ input, pre, textarea, select {
   height: 5px;
   border-radius: 50%;
   background: var(--text-main);
+  flex-shrink: 0;
 }
 
 .rec-song-group-title {
@@ -1477,6 +1615,13 @@ input, pre, textarea, select {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-main);
+}
+
+.rec-song-group-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .rec-song-list {
@@ -3924,6 +4069,37 @@ input, pre, textarea, select {
   .rec-song-like-btn.liked {
     color: var(--accent-red);
     background: rgba(18, 18, 20, 0.88);
+  }
+
+  /* Genre filter bar on Android */
+  .home-genre-bar-container {
+    margin: -8px -16px 4px -16px;
+    padding: 4px 16px;
+  }
+
+  .home-genre-pill {
+    font-size: 12px;
+    padding: 6px 13px;
+    min-height: 34px;
+  }
+
+  /* Show more action pills on Android */
+  .home-more-action-row {
+    padding-top: 10px;
+  }
+
+  .home-show-more-pill {
+    width: 100%;
+    max-width: 320px;
+    font-size: 12.5px;
+    padding: 10px 16px;
+  }
+
+  .category-expand-btn {
+    width: 100%;
+    max-width: 280px;
+    font-size: 12px;
+    padding: 8px 14px;
   }
 }
 
