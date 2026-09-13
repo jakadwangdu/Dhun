@@ -13,9 +13,12 @@ const getApiKey = () => {
 }
 
 const buildApiUrl = (endpoint) => {
-  if (import.meta.env.DEV) return `${YOUTUBE_API_BASE}${endpoint}`
+  const key = getApiKey()
   const separator = endpoint.includes('?') ? '&' : '?'
-  return `${YOUTUBE_API_BASE}${endpoint}${separator}key=${getApiKey()}`
+  if (import.meta.env.DEV) {
+    return key ? `${YOUTUBE_API_BASE}${endpoint}${separator}key=${encodeURIComponent(key)}` : `${YOUTUBE_API_BASE}${endpoint}`
+  }
+  return `${YOUTUBE_API_BASE}${endpoint}${separator}key=${encodeURIComponent(key)}`
 }
 
 const fetchWithRetry = async (url, options) => {
@@ -25,6 +28,7 @@ const fetchWithRetry = async (url, options) => {
     try {
       const response = await fetch(url, options)
       if (response.status === 429 || response.status === 403) {
+        try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
         throw new Error(`Rate limit or quota reached (HTTP ${response.status})`)
       }
       if (!response.ok) {
@@ -138,6 +142,8 @@ export default function App() {
   const pendingTrackRef = useRef(null)
   const prevTabRef = useRef('welcome')
   const playerRef = useRef(null)
+  const playerInitializingRef = useRef(false)
+  const recommendationsFetchingRef = useRef(false)
   const similarCacheRef = useRef(new Map())
 
   const repeatModeRef = useRef('none')
@@ -238,15 +244,17 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (isYtReady && !player) {
-      const currentOrigin = typeof window !== 'undefined' && window.location?.origin && window.location.origin.startsWith('http')
-        ? window.location.origin
-        : undefined
+    if (!isYtReady || playerRef.current || playerInitializingRef.current) return
+    playerInitializingRef.current = true
 
-      const ytPlayer = new window.YT.Player('youtube-player-container', {
+    const currentOrigin = typeof window !== 'undefined' && window.location?.origin && window.location.origin.startsWith('http')
+      ? window.location.origin
+      : undefined
+
+    try {
+      new window.YT.Player('youtube-player-container', {
         height: '240', width: '320',
         videoId: '',
-        host: 'https://www.youtube-nocookie.com',
         playerVars: {
           autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
           modestbranding: 1, playsinline: 1, iv_load_policy: 3,
@@ -260,6 +268,7 @@ export default function App() {
             setPlayer(p)
             setPlayerReady(true)
             playerReadyRef.current = true
+            playerInitializingRef.current = false
             if (pendingTrackRef.current) {
               const t = pendingTrackRef.current
               pendingTrackRef.current = null
@@ -303,6 +312,8 @@ export default function App() {
           }
         }
       })
+    } catch (e) {
+      playerInitializingRef.current = false
     }
   }, [isYtReady])
 
@@ -509,6 +520,13 @@ export default function App() {
     }
 
     failedEmbedTrackIds.current.add(track.id)
+
+    if (!getApiKey() || sessionStorage.getItem('dhun_api_rate_limited') === 'true') {
+      setPlayerError('Embedding restricted for this track. Playing next...')
+      setTimeout(() => handleNext(), 1200)
+      return
+    }
+
     setPlayerError('Embedding restricted by creator. Finding alternate stream...')
 
     try {
@@ -617,6 +635,16 @@ export default function App() {
     if (trendingFetched.current) return
     setIsLoadingTrending(true)
     trendingFetched.current = true
+
+    const apiKey = getApiKey()
+    const isRateLimited = sessionStorage.getItem('dhun_api_rate_limited') === 'true'
+    if (!apiKey || isRateLimited) {
+      const fallbackTracks = FALLBACK_CATEGORIES.flatMap(c => c.songs)
+      setTrendingSongs(fallbackTracks)
+      setIsLoadingTrending(false)
+      return
+    }
+
     try {
       const response = await fetchWithRetry(
         buildApiUrl('/videos?part=snippet,status&chart=mostPopular&videoCategoryId=10&maxResults=24')
@@ -633,10 +661,12 @@ export default function App() {
           artist: item.snippet.channelTitle,
           thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
         }))
-      setTrendingSongs(songs)
+      setTrendingSongs(songs.length > 0 ? songs : FALLBACK_CATEGORIES.flatMap(c => c.songs))
     } catch (err) {
-      setErrorMsg("Could not load trending songs")
-      setTimeout(() => setErrorMsg(null), 6000)
+      if (err.message?.includes('429') || err.message?.includes('Rate limit') || err.message?.includes('403')) {
+        try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
+      }
+      setTrendingSongs(FALLBACK_CATEGORIES.flatMap(c => c.songs))
     } finally {
       setIsLoadingTrending(false)
     }
@@ -730,6 +760,39 @@ export default function App() {
     if (!query.trim()) return
     setIsSearching(true)
     setErrorMsg(null)
+    const apiKey = getApiKey()
+    const isRateLimited = sessionStorage.getItem('dhun_api_rate_limited') === 'true'
+
+    if (!apiKey || isRateLimited) {
+      const q = query.toLowerCase().trim()
+      const pool = [
+        ...likedSongs,
+        ...recentlyPlayed,
+        ...FALLBACK_CATEGORIES.flatMap(c => c.songs)
+      ]
+      const results = pool.filter(s =>
+        s.title.toLowerCase().includes(q) || s.artist?.toLowerCase().includes(q)
+      )
+      const seen = new Set()
+      const deduped = []
+      for (const item of results) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id)
+          deduped.push(item)
+        }
+      }
+      setSearchResults(deduped)
+      setShowTrending(false)
+      setIsSearching(false)
+      if (deduped.length === 0) {
+        setErrorMsg(isRateLimited
+          ? 'YouTube API quota reached. Showing library matches.'
+          : 'For full catalog search across all of YouTube, add your free API key in Settings (⚙️).')
+        setTimeout(() => setErrorMsg(null), 6000)
+      }
+      return
+    }
+
     try {
       const response = await fetchWithRetry(
         buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoEmbeddable=true&maxResults=16`)
@@ -749,8 +812,11 @@ export default function App() {
       setSearchResults(results)
       setShowTrending(false)
     } catch (err) {
-      const msg = err.message?.includes('quota') || err.message?.includes('exceeded')
-        ? 'YouTube API quota exceeded. Set a custom key in Settings (⚙️).'
+      if (err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('exceeded')) {
+        try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
+      }
+      const msg = err.message?.includes('quota') || err.message?.includes('exceeded') || err.message?.includes('429')
+        ? 'YouTube API quota reached. Set a custom key in Settings (⚙️).'
         : err.message?.includes('HTTP 403')
         ? 'YouTube API key invalid. Configure a key in Settings (⚙️).'
         : `Search failed: ${err.message}`
@@ -849,6 +915,32 @@ export default function App() {
       setHeaderSearchResults([])
       return
     }
+
+    const apiKey = getApiKey()
+    const isRateLimited = sessionStorage.getItem('dhun_api_rate_limited') === 'true'
+
+    if (!apiKey || isRateLimited) {
+      const q = query.toLowerCase().trim()
+      const pool = [
+        ...likedSongs,
+        ...recentlyPlayed,
+        ...FALLBACK_CATEGORIES.flatMap(c => c.songs)
+      ]
+      const results = pool.filter(s =>
+        s.title.toLowerCase().includes(q) || s.artist?.toLowerCase().includes(q)
+      )
+      const seen = new Set()
+      const deduped = []
+      for (const item of results) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id)
+          deduped.push(item)
+        }
+      }
+      setHeaderSearchResults(deduped.slice(0, 6))
+      return
+    }
+
     setIsHeaderSearching(true)
     headerSearchTimeout.current = setTimeout(async () => {
       try {
@@ -870,8 +962,11 @@ export default function App() {
         setHeaderSearchResults(results)
       } catch (err) {
         setHeaderSearchResults([])
-        const msg = err.message?.includes('quota') || err.message?.includes('exceeded')
-          ? 'YouTube API quota exceeded. Set a custom key in Settings.'
+        if (err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('exceeded')) {
+          try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
+        }
+        const msg = err.message?.includes('quota') || err.message?.includes('exceeded') || err.message?.includes('429')
+          ? 'YouTube API quota reached. Set a custom key in Settings.'
           : err.message?.includes('HTTP 403') || err.message?.includes('restricted')
           ? 'YouTube API key invalid. Check key in Settings.'
           : 'Search unavailable right now'
@@ -898,6 +993,18 @@ export default function App() {
       return
     }
     setIsLoadingRecommended(true)
+    const apiKey = getApiKey()
+    const isRateLimited = sessionStorage.getItem('dhun_api_rate_limited') === 'true'
+
+    if (!apiKey || isRateLimited) {
+      const allFallback = FALLBACK_CATEGORIES.flatMap(c => c.songs)
+      const filtered = allFallback.filter(s => s.id !== track.id).slice(0, 6)
+      similarCacheRef.current.set(track.id, filtered)
+      setRecommendedSongs(filtered)
+      setIsLoadingRecommended(false)
+      return
+    }
+
     try {
       const query = `${track.title} ${track.artist} music`
       const response = await fetchWithRetry(
@@ -916,12 +1023,16 @@ export default function App() {
           thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
         }))
       const filtered = results.filter(s => s.id !== track.id).slice(0, 6)
-      similarCacheRef.current.set(track.id, filtered)
-      setRecommendedSongs(filtered)
-    } catch {
-      if (recommendedSongs.length === 0) {
-        setRecommendedSongs([])
+      const finalRecs = filtered.length > 0 ? filtered : FALLBACK_CATEGORIES.flatMap(c => c.songs).filter(s => s.id !== track.id).slice(0, 6)
+      similarCacheRef.current.set(track.id, finalRecs)
+      setRecommendedSongs(finalRecs)
+    } catch (err) {
+      if (err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('exceeded')) {
+        try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
       }
+      const fallbackRecs = FALLBACK_CATEGORIES.flatMap(c => c.songs).filter(s => s.id !== track.id).slice(0, 6)
+      similarCacheRef.current.set(track.id, fallbackRecs)
+      setRecommendedSongs(fallbackRecs)
     } finally {
       setIsLoadingRecommended(false)
     }
@@ -997,6 +1108,8 @@ export default function App() {
   ]
 
   const fetchGenZRecommendations = async () => {
+    if (recommendationsFetchingRef.current) return
+    recommendationsFetchingRef.current = true
     setIsLoadingIndianRecs(true)
     const CACHE_KEY = 'dhun_genz_recommendations_v3'
     try {
@@ -1007,10 +1120,26 @@ export default function App() {
           setIndianRecCategories(parsed.categories)
           setIndianRecs(parsed.songs || [])
           setIsLoadingIndianRecs(false)
+          recommendationsFetchingRef.current = false
           return
         }
       }
     } catch (e) {}
+
+    const apiKey = getApiKey()
+    const isRateLimited = sessionStorage.getItem('dhun_api_rate_limited') === 'true'
+
+    if (!apiKey || isRateLimited) {
+      setIndianRecCategories(FALLBACK_CATEGORIES)
+      const allSongs = FALLBACK_CATEGORIES.flatMap(c => c.songs)
+      setIndianRecs(allSongs.slice(0, 12))
+      setIsLoadingIndianRecs(false)
+      recommendationsFetchingRef.current = false
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ categories: FALLBACK_CATEGORIES, songs: allSongs.slice(0, 12) }))
+      } catch (e) {}
+      return
+    }
 
     try {
       const categoriesToFetch = FALLBACK_CATEGORIES.slice(0, 3)
@@ -1030,7 +1159,10 @@ export default function App() {
               thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
             }))
           return { ...cat, songs: songs.length >= 2 ? songs.slice(0, 6) : cat.songs }
-        } catch {
+        } catch (err) {
+          if (err.message?.includes('429') || err.message?.includes('Rate limit') || err.message?.includes('403')) {
+            try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
+          }
           return cat
         }
       })
@@ -1048,6 +1180,7 @@ export default function App() {
       setIndianRecs(FALLBACK_CATEGORIES.flatMap(c => c.songs).slice(0, 12))
     } finally {
       setIsLoadingIndianRecs(false)
+      recommendationsFetchingRef.current = false
     }
   }
 
@@ -1162,7 +1295,15 @@ export default function App() {
       localStorage.removeItem('dhun_youtube_api_key')
       setCustomApiKey('')
     }
+    sessionStorage.removeItem('dhun_api_rate_limited')
+    sessionStorage.removeItem('dhun_genz_recommendations_v3')
     setShowSettingsModal(false)
+    if (key) {
+      trendingFetched.current = false
+      recommendationsFetchingRef.current = false
+      fetchGenZRecommendations()
+      fetchTrendingSongs()
+    }
   }
 
   const formatTime = (sec) => {

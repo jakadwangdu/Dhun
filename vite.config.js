@@ -17,7 +17,9 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
               const url = new URL(proxyReq.path, 'https://www.googleapis.com')
-              url.searchParams.set('key', YOUTUBE_API_KEY)
+              if (!url.searchParams.get('key') && YOUTUBE_API_KEY) {
+                url.searchParams.set('key', YOUTUBE_API_KEY)
+              }
               proxyReq.path = url.pathname + url.search
             })
           }
