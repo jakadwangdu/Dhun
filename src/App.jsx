@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu } from 'lucide-react'
 import './App.css'
 import logoVector from './logo_vector.svg'
 import qrCode from '../qr.png'
@@ -21,9 +21,12 @@ const buildApiUrl = (endpoint) => {
 const fetchWithRetry = async (url, options) => {
   let delay = 1000
   let lastError
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 3; i++) {
     try {
       const response = await fetch(url, options)
+      if (response.status === 429 || response.status === 403) {
+        throw new Error(`Rate limit or quota reached (HTTP ${response.status})`)
+      }
       if (!response.ok) {
         let errMsg = `HTTP ${response.status}`
         try {
@@ -35,7 +38,10 @@ const fetchWithRetry = async (url, options) => {
       return response
     } catch (error) {
       lastError = error
-      if (i < 4) {
+      if (error.message?.includes('429') || error.message?.includes('403') || error.message?.includes('Rate limit')) {
+        break
+      }
+      if (i < 2) {
         await new Promise(res => setTimeout(res, delay))
         delay *= 2
       }
@@ -106,6 +112,7 @@ export default function App() {
   })
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState(null)
   const [showCoffeeModal, setShowCoffeeModal] = useState(false)
+  const [showQuickMenu, setShowQuickMenu] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [settingsApiKey, setSettingsApiKey] = useState('')
@@ -131,6 +138,7 @@ export default function App() {
   const pendingTrackRef = useRef(null)
   const prevTabRef = useRef('welcome')
   const playerRef = useRef(null)
+  const similarCacheRef = useRef(new Map())
 
   const repeatModeRef = useRef('none')
   const queueRef = useRef([])
@@ -162,7 +170,7 @@ export default function App() {
     try {
       const docEl = document.documentElement
       const requestFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen
-      if (!document.fullscreenElement && requestFs) {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && requestFs) {
         requestFs.call(docEl).catch(() => {})
       }
     } catch (e) {}
@@ -170,7 +178,7 @@ export default function App() {
 
   const toggleFullscreen = () => {
     try {
-      if (!document.fullscreenElement) {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         enterFullscreen()
       } else {
         const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen
@@ -181,36 +189,17 @@ export default function App() {
     } catch (e) {}
   }
 
-  // Set as default to fullscreen: auto-enter immediately and on first user gesture
+  // Fullscreen state listener (user gesture initiated only, preventing browser security errors)
   useEffect(() => {
-    enterFullscreen()
-
-    const handleFirstGesture = () => {
-      enterFullscreen()
-      window.removeEventListener('click', handleFirstGesture)
-      window.removeEventListener('touchstart', handleFirstGesture)
-      window.removeEventListener('pointerdown', handleFirstGesture)
-      window.removeEventListener('keydown', handleFirstGesture)
-    }
-
-    window.addEventListener('click', handleFirstGesture, { once: true })
-    window.addEventListener('touchstart', handleFirstGesture, { once: true, passive: true })
-    window.addEventListener('pointerdown', handleFirstGesture, { once: true, passive: true })
-    window.addEventListener('keydown', handleFirstGesture, { once: true })
-
     const onFsChange = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement))
     document.addEventListener('fullscreenchange', onFsChange)
     document.addEventListener('webkitfullscreenchange', onFsChange)
 
     return () => {
-      window.removeEventListener('click', handleFirstGesture)
-      window.removeEventListener('touchstart', handleFirstGesture)
-      window.removeEventListener('pointerdown', handleFirstGesture)
-      window.removeEventListener('keydown', handleFirstGesture)
       document.removeEventListener('fullscreenchange', onFsChange)
       document.removeEventListener('webkitfullscreenchange', onFsChange)
     }
-  }, [enterFullscreen])
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('dhun_playlists', JSON.stringify(playlists))
@@ -274,7 +263,10 @@ export default function App() {
           onStateChange: (event) => {
             if (event.data === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true)
-              setDuration(event.target.getDuration())
+              const dur = event.target.getDuration()
+              if (typeof dur === 'number' && !isNaN(dur) && dur > 0) {
+                setDuration(dur)
+              }
               startProgressTimer(event.target)
             } else if (event.data === window.YT.PlayerState.PAUSED) {
               setIsPlaying(false)
@@ -284,7 +276,7 @@ export default function App() {
               stopProgressTimer()
               handleTrackEndRef.current()
             } else if (event.data === window.YT.PlayerState.BUFFERING) {
-              stopProgressTimer()
+              // Video is buffering, continue updating or keep current state
             } else if (event.data === window.YT.PlayerState.CUED) {
               event.target.playVideo()
             }
@@ -328,9 +320,21 @@ export default function App() {
 
   const startProgressTimer = (ytPlayer) => {
     stopProgressTimer()
-    progressInterval.current = setInterval(() => {
-      try { setCurrentTime(ytPlayer.getCurrentTime()) } catch(e) {}
-    }, 1000)
+    const updateProgress = () => {
+      if (!ytPlayer) return
+      try {
+        const cur = ytPlayer.getCurrentTime()
+        if (typeof cur === 'number' && !isNaN(cur)) {
+          setCurrentTime(cur)
+        }
+        const dur = ytPlayer.getDuration()
+        if (typeof dur === 'number' && !isNaN(dur) && dur > 0) {
+          setDuration(dur)
+        }
+      } catch (e) {}
+    }
+    updateProgress()
+    progressInterval.current = setInterval(updateProgress, 500)
   }
 
   const stopProgressTimer = () => {
@@ -339,6 +343,8 @@ export default function App() {
 
   const actuallyPlay = useCallback((track) => {
     if (!track) return
+    setCurrentTime(0)
+    setDuration(0)
     const p = playerRef.current
     if (p && playerReadyRef.current) {
       setPlayerError(null)
@@ -881,6 +887,10 @@ export default function App() {
 
   const fetchSimilarSongs = async (track) => {
     if (!track) return
+    if (similarCacheRef.current.has(track.id)) {
+      setRecommendedSongs(similarCacheRef.current.get(track.id))
+      return
+    }
     setIsLoadingRecommended(true)
     try {
       const query = `${track.title} ${track.artist} music`
@@ -899,30 +909,109 @@ export default function App() {
           artist: item.snippet.channelTitle,
           thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
         }))
-      setRecommendedSongs(results.filter(s => s.id !== track.id).slice(0, 6))
+      const filtered = results.filter(s => s.id !== track.id).slice(0, 6)
+      similarCacheRef.current.set(track.id, filtered)
+      setRecommendedSongs(filtered)
     } catch {
-      setRecommendedSongs([])
+      if (recommendedSongs.length === 0) {
+        setRecommendedSongs([])
+      }
     } finally {
       setIsLoadingRecommended(false)
     }
   }
 
+  const FALLBACK_CATEGORIES = [
+    {
+      name: 'Featured Selections',
+      query: 'global viral top hits 2025 2026 trending',
+      color: '#18181b',
+      songs: [
+        { id: '4NRXx6U8ABQ', title: 'The Weeknd - Blinding Lights', artist: 'The Weeknd', thumbnail: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg' },
+        { id: 'JGwWNGJdvx8', title: 'Ed Sheeran - Shape of You', artist: 'Ed Sheeran', thumbnail: 'https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg' },
+        { id: 'OPf0YbXqDm0', title: 'Mark Ronson - Uptown Funk ft. Bruno Mars', artist: 'Mark Ronson', thumbnail: 'https://i.ytimg.com/vi/OPf0YbXqDm0/hqdefault.jpg' },
+        { id: 'hT_nvWreIhg', title: 'OneRepublic - Counting Stars', artist: 'OneRepublic', thumbnail: 'https://i.ytimg.com/vi/hT_nvWreIhg/hqdefault.jpg' },
+        { id: 'kJQP7kiw5Fk', title: 'Luis Fonsi - Despacito ft. Daddy Yankee', artist: 'Luis Fonsi', thumbnail: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg' },
+        { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen Official', thumbnail: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg' },
+      ]
+    },
+    {
+      name: 'Modern Bass & Rhythm',
+      query: 'phonk drift bass aggressive workout music',
+      color: '#27272a',
+      songs: [
+        { id: 'MW3R7h-T3bY', title: 'DVRST - Close Eyes', artist: 'DVRST', thumbnail: 'https://i.ytimg.com/vi/MW3R7h-T3bY/hqdefault.jpg' },
+        { id: '1-xGerv5FOk', title: 'Kordhell - Murder In My Mind', artist: 'Kordhell', thumbnail: 'https://i.ytimg.com/vi/1-xGerv5FOk/hqdefault.jpg' },
+        { id: 'r2z8_IMiEgQ', title: 'Hensonn - Sahara', artist: 'Hensonn', thumbnail: 'https://i.ytimg.com/vi/r2z8_IMiEgQ/hqdefault.jpg' },
+        { id: 'eB6tYB_4VmA', title: 'GHOSTFACE PLAYA - Why Not', artist: 'Ghostface Playa', thumbnail: 'https://i.ytimg.com/vi/eB6tYB_4VmA/hqdefault.jpg' },
+      ]
+    },
+    {
+      name: 'Acoustic & Lo-Fi',
+      query: 'lofi hip hop beats chill study relax 2025',
+      color: '#3f3f46',
+      songs: [
+        { id: 'jfKfPfyJRdk', title: 'lofi hip hop radio - beats to relax/study to', artist: 'Lofi Girl', thumbnail: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg' },
+        { id: '5qap5aO4i9A', title: 'Lofi Hip Hop Chill Beats', artist: 'ChilledCow', thumbnail: 'https://i.ytimg.com/vi/5qap5aO4i9A/hqdefault.jpg' },
+        { id: 'DWcJFNfaw9c', title: 'Coffee Shop Radio // 24/7 lofi beats', artist: 'STEEZYASFUCK', thumbnail: 'https://i.ytimg.com/vi/DWcJFNfaw9c/hqdefault.jpg' },
+        { id: 'TURbeWK2wwg', title: 'Warm Nights - Chill Lo-Fi Study Music', artist: 'Kuma Beats', thumbnail: 'https://i.ytimg.com/vi/TURbeWK2wwg/hqdefault.jpg' },
+      ]
+    },
+    {
+      name: 'Global Melodies',
+      query: 'afrobeats reggaeton latin pop dance 2025',
+      color: '#52525b',
+      songs: [
+        { id: 'armYs_s0YHg', title: 'Rema, Selena Gomez - Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/armYs_s0YHg/hqdefault.jpg' },
+        { id: 'tbneQD7hewE', title: 'Burna Boy - Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/tbneQD7hewE/hqdefault.jpg' },
+        { id: 'gNi_6U5Pm_o', title: 'Bad Bunny - Tití Me Preguntó', artist: 'Bad Bunny', thumbnail: 'https://i.ytimg.com/vi/gNi_6U5Pm_o/hqdefault.jpg' },
+        { id: 'saEpkcVi1d4', title: 'Rosalía, Rauw Alejandro - BESO', artist: 'ROSALÍA', thumbnail: 'https://i.ytimg.com/vi/saEpkcVi1d4/hqdefault.jpg' },
+      ]
+    },
+    {
+      name: 'Atmospheric Indie',
+      query: 'hyperpop indie rock synthwave 2025',
+      color: '#71717a',
+      songs: [
+        { id: 'gQlMMD8auMs', title: 'MGMT - Little Dark Age', artist: 'MGMT', thumbnail: 'https://i.ytimg.com/vi/gQlMMD8auMs/hqdefault.jpg' },
+        { id: 'H5v3kku4y6Q', title: 'Harry Styles - As It Was', artist: 'Harry Styles', thumbnail: 'https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg' },
+        { id: '0J2QdDbelmY', title: 'The White Stripes - Seven Nation Army', artist: 'The White Stripes', thumbnail: 'https://i.ytimg.com/vi/0J2QdDbelmY/hqdefault.jpg' },
+      ]
+    },
+    {
+      name: 'Lyrical Hip-Hop',
+      query: 'underground rap boom bap drill hits',
+      color: '#a1a1aa',
+      songs: [
+        { id: 'tvTRZJ-4EyI', title: 'Kendrick Lamar - HUMBLE.', artist: 'Kendrick Lamar', thumbnail: 'https://i.ytimg.com/vi/tvTRZJ-4EyI/hqdefault.jpg' },
+        { id: 'Y2V6yn9Mx4A', title: 'J. Cole - No Role Modelz', artist: 'J. Cole', thumbnail: 'https://i.ytimg.com/vi/Y2V6yn9Mx4A/hqdefault.jpg' },
+        { id: 'wXhTHyIgQ_U', title: 'Post Malone - Circles', artist: 'Post Malone', thumbnail: 'https://i.ytimg.com/vi/wXhTHyIgQ_U/hqdefault.jpg' },
+      ]
+    }
+  ]
+
   const fetchGenZRecommendations = async () => {
     setIsLoadingIndianRecs(true)
-    const categories = [
-      { name: 'Featured Selections', query: 'global viral top hits 2025 2026 trending', color: '#18181b' },
-      { name: 'Modern Bass & Rhythm', query: 'phonk drift bass aggressive workout music', color: '#27272a' },
-      { name: 'Acoustic & Lo-Fi', query: 'lofi hip hop beats chill study relax 2025', color: '#3f3f46' },
-      { name: 'Global Melodies', query: 'afrobeats reggaeton latin pop dance 2025', color: '#52525b' },
-      { name: 'Atmospheric Indie', query: 'hyperpop indie rock synthwave 2025', color: '#71717a' },
-      { name: 'Lyrical Hip-Hop', query: 'underground rap boom bap drill hits', color: '#a1a1aa' },
-    ]
+    const CACHE_KEY = 'dhun_genz_recommendations'
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed?.categories?.length > 0) {
+          setIndianRecCategories(parsed.categories)
+          setIndianRecs(parsed.songs || [])
+          setIsLoadingIndianRecs(false)
+          return
+        }
+      }
+    } catch (e) {}
 
     try {
-      const categoryPromises = categories.map(async (cat) => {
+      const categoriesToFetch = FALLBACK_CATEGORIES.slice(0, 3)
+      const categoryPromises = categoriesToFetch.map(async (cat) => {
         try {
           const response = await fetchWithRetry(
-            buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(cat.query)}&type=video&videoEmbeddable=true&maxResults=8`)
+            buildApiUrl(`/search?part=snippet&q=${encodeURIComponent(cat.query)}&type=video&videoEmbeddable=true&maxResults=6`)
           )
           const data = await response.json()
           if (data.error) throw new Error(data.error.message)
@@ -934,20 +1023,23 @@ export default function App() {
               artist: item.snippet.channelTitle,
               thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url
             }))
-          return { ...cat, songs: songs.slice(0, 6) }
+          return { ...cat, songs: songs.length >= 2 ? songs.slice(0, 6) : cat.songs }
         } catch {
-          return { ...cat, songs: [] }
+          return cat
         }
       })
 
-      const results = await Promise.all(categoryPromises)
-      const filtered = results.filter(c => c.songs.length >= 3)
-      setIndianRecCategories(filtered)
-      const allSongs = filtered.flatMap(c => c.songs)
+      const liveResults = await Promise.all(categoryPromises)
+      const finalCategories = liveResults.concat(FALLBACK_CATEGORIES.slice(3))
+      setIndianRecCategories(finalCategories)
+      const allSongs = finalCategories.flatMap(c => c.songs)
       setIndianRecs(allSongs.slice(0, 12))
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ categories: finalCategories, songs: allSongs.slice(0, 12) }))
+      } catch (e) {}
     } catch {
-      setIndianRecCategories([])
-      setIndianRecs([])
+      setIndianRecCategories(FALLBACK_CATEGORIES)
+      setIndianRecs(FALLBACK_CATEGORIES.flatMap(c => c.songs).slice(0, 12))
     } finally {
       setIsLoadingIndianRecs(false)
     }
@@ -1069,9 +1161,14 @@ export default function App() {
 
   const formatTime = (sec) => {
     if (!sec || isNaN(sec) || sec < 0) return '0:00'
-    const m = Math.floor(sec / 60)
-    const s = Math.floor(sec % 60)
-    return `${m}:${s < 10 ? '0' : ''}${s}`
+    const totalSeconds = Math.floor(sec)
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    if (hours > 0) {
+      return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+    }
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
   }
 
   return (
@@ -1255,14 +1352,17 @@ export default function App() {
             </div>
 
             <div className="header-actions">
-              <button onClick={openSettings} className="icon-btn" title="Settings">
+              <button onClick={openSettings} className="icon-btn header-settings-btn" title="Settings" aria-label="Settings">
                 <Settings size={18} />
               </button>
-              <button onClick={toggleFullscreen} className="icon-btn" title="Toggle fullscreen">
+              <button onClick={toggleFullscreen} className="icon-btn header-desktop-only" title="Toggle fullscreen" aria-label="Toggle fullscreen">
                 {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
-              <button onClick={() => setIsDarkMode(!isDarkMode)} className="icon-btn theme-toggle-btn" title={isDarkMode ? 'Light Mode' : 'Dark Mode'}>
+              <button onClick={() => setIsDarkMode(!isDarkMode)} className="icon-btn header-desktop-only theme-toggle-btn" title={isDarkMode ? 'Light Mode' : 'Dark Mode'} aria-label="Toggle theme">
                 {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+              <button onClick={() => setShowQuickMenu(true)} className="icon-btn header-mobile-menu-btn" title="Menu" aria-label="Open navigation menu">
+                <Menu size={20} />
               </button>
             </div>
           </header>
@@ -1566,10 +1666,14 @@ export default function App() {
                           <span className="seek-tag">{formatTime(duration)}</span>
                         </div>
                         <input
-                          type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek}
+                          type="range"
+                          min="0"
+                          max={duration > 0 ? duration : 100}
+                          value={Math.min(currentTime, duration > 0 ? duration : 100)}
+                          onChange={handleSeek}
                           className="seek-bar"
                           style={{
-                            background: `linear-gradient(to right, var(--text-main) ${(currentTime / (duration || 1)) * 100}%, var(--border-color) ${(currentTime / (duration || 1)) * 100}%)`
+                            background: `linear-gradient(to right, var(--text-main) ${duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0}%, var(--border-color) ${duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0}%)`
                           }}
                         />
                       </div>
@@ -1663,7 +1767,7 @@ export default function App() {
                                   className="recommended-item"
                                   onClick={() => {
                                     addToRecent(song)
-                                    setQueue([song])
+                                    setQueue([song, ...recommendedSongs.filter(s => s.id !== song.id)])
                                     setCurrentTrackIndex(0)
                                     actuallyPlay(song)
                                   }}
@@ -2025,10 +2129,14 @@ export default function App() {
                 <div className="dock-seek-wrap">
                   <span className="dock-time">{formatTime(currentTime)}</span>
                   <input
-                    type="range" min="0" max={duration || 100} value={currentTime} onChange={handleSeek}
+                    type="range"
+                    min="0"
+                    max={duration > 0 ? duration : 100}
+                    value={Math.min(currentTime, duration > 0 ? duration : 100)}
+                    onChange={handleSeek}
                     className="dock-seek-bar"
                     style={{
-                      background: `linear-gradient(to right, var(--text-main) ${(currentTime / (duration || 1)) * 100}%, var(--border-color) ${(currentTime / (duration || 1)) * 100}%)`
+                      background: `linear-gradient(to right, var(--text-main) ${duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0}%, var(--border-color) ${duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0}%)`
                     }}
                   />
                   <span className="dock-time">{formatTime(duration)}</span>
@@ -2197,6 +2305,130 @@ export default function App() {
                       Use Default
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Quick Menu Drawer */}
+        {showQuickMenu && (
+          <div className="quick-menu-overlay" onClick={() => setShowQuickMenu(false)}>
+            <div className="quick-menu-drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="quick-menu-header">
+                <div className="quick-menu-brand">
+                  <img src={logoVector} alt="" className="quick-menu-logo" />
+                  <div>
+                    <h3 className="quick-menu-title">Dhun Music</h3>
+                    <span className="quick-menu-subtitle">Audio Edition • Vol. 04</span>
+                  </div>
+                </div>
+                <button
+                  className="quick-menu-close"
+                  onClick={() => setShowQuickMenu(false)}
+                  aria-label="Close menu"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="quick-menu-body">
+                <div className="quick-menu-section">
+                  <span className="quick-menu-section-label">Index Navigation</span>
+                  <div className="quick-menu-nav">
+                    <button
+                      className={`quick-menu-link${activeTab === 'welcome' ? ' active' : ''}`}
+                      onClick={() => { navigateTo('welcome'); setShowQuickMenu(false) }}
+                    >
+                      <span className="quick-menu-num">01</span>
+                      <span className="quick-menu-link-text">Overview & Home</span>
+                    </button>
+                    <button
+                      className={`quick-menu-link${activeTab === 'explore' ? ' active' : ''}`}
+                      onClick={() => { navigateTo('explore'); fetchTrendingSongs(); setShowQuickMenu(false) }}
+                    >
+                      <span className="quick-menu-num">02</span>
+                      <span className="quick-menu-link-text">Explore & Trending</span>
+                    </button>
+                    <button
+                      className={`quick-menu-link${activeTab === 'player' ? ' active' : ''}`}
+                      onClick={() => { navigateTo('player'); setShowQuickMenu(false) }}
+                    >
+                      <span className="quick-menu-num">03</span>
+                      <span className="quick-menu-link-text">Listening Room</span>
+                      {isPlaying && <span className="quick-menu-badge">Playing</span>}
+                    </button>
+                    <button
+                      className={`quick-menu-link${activeTab === 'playlists' ? ' active' : ''}`}
+                      onClick={() => { navigateTo('playlists'); setShowQuickMenu(false) }}
+                    >
+                      <span className="quick-menu-num">04</span>
+                      <span className="quick-menu-link-text">Collections & Library</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="quick-menu-section">
+                  <span className="quick-menu-section-label">Preferences & Controls</span>
+                  <div className="quick-menu-actions">
+                    <button
+                      className="quick-menu-action-item"
+                      onClick={() => { setShowQuickMenu(false); openSettings() }}
+                    >
+                      <div className="quick-menu-action-left">
+                        <Settings size={18} />
+                        <span>API Settings</span>
+                      </div>
+                      <span className="quick-menu-pill">
+                        {customApiKey ? 'Custom Key' : 'Default'}
+                      </span>
+                    </button>
+
+                    <button
+                      className="quick-menu-action-item"
+                      onClick={() => setIsDarkMode(!isDarkMode)}
+                    >
+                      <div className="quick-menu-action-left">
+                        {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                        <span>Interface Theme</span>
+                      </div>
+                      <span className="quick-menu-pill">
+                        {isDarkMode ? 'Dark Mode' : 'Light Mode'}
+                      </span>
+                    </button>
+
+                    <button
+                      className="quick-menu-action-item"
+                      onClick={() => { toggleFullscreen(); setShowQuickMenu(false) }}
+                    >
+                      <div className="quick-menu-action-left">
+                        {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                        <span>Fullscreen Mode</span>
+                      </div>
+                      <span className="quick-menu-pill">
+                        {isFullscreen ? 'Active' : 'Standard'}
+                      </span>
+                    </button>
+
+                    <button
+                      className="quick-menu-action-item"
+                      onClick={() => { setShowQuickMenu(false); setShowCoffeeModal(true) }}
+                    >
+                      <div className="quick-menu-action-left">
+                        <Coffee size={18} />
+                        <span>Support Project</span>
+                      </div>
+                      <span className="quick-menu-pill highlight">Buy Coffee</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="quick-menu-footer-card">
+                  <div className="quick-menu-stream-status">
+                    <span className="pulse-dot" />
+                    <span>Stereo Hi-Fi • Zero-Ad Architecture</span>
+                  </div>
+                  <span className="quick-menu-version">Dhun v4.2 Editorial Release</span>
                 </div>
               </div>
             </div>
