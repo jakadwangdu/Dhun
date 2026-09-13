@@ -239,13 +239,19 @@ export default function App() {
 
   useEffect(() => {
     if (isYtReady && !player) {
+      const currentOrigin = typeof window !== 'undefined' && window.location?.origin && window.location.origin.startsWith('http')
+        ? window.location.origin
+        : undefined
+
       const ytPlayer = new window.YT.Player('youtube-player-container', {
         height: '240', width: '320',
         videoId: '',
+        host: 'https://www.youtube-nocookie.com',
         playerVars: {
           autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
           modestbranding: 1, playsinline: 1, iv_load_policy: 3,
-          enablejsapi: 1, widgetid: 1, origin: (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http') ? window.location.origin : 'https://www.youtube.com')
+          enablejsapi: 1,
+          ...(currentOrigin ? { origin: currentOrigin } : {})
         },
         events: {
           onReady: (event) => {
@@ -937,62 +943,62 @@ export default function App() {
     },
     {
       name: 'Modern Bass & Rhythm',
-      query: 'phonk drift bass aggressive workout music',
+      query: 'electronic dance bass workout hits',
       color: '#27272a',
       songs: [
-        { id: 'MW3R7h-T3bY', title: 'DVRST - Close Eyes', artist: 'DVRST', thumbnail: 'https://i.ytimg.com/vi/MW3R7h-T3bY/hqdefault.jpg' },
-        { id: '1-xGerv5FOk', title: 'Kordhell - Murder In My Mind', artist: 'Kordhell', thumbnail: 'https://i.ytimg.com/vi/1-xGerv5FOk/hqdefault.jpg' },
-        { id: 'r2z8_IMiEgQ', title: 'Hensonn - Sahara', artist: 'Hensonn', thumbnail: 'https://i.ytimg.com/vi/r2z8_IMiEgQ/hqdefault.jpg' },
-        { id: 'eB6tYB_4VmA', title: 'GHOSTFACE PLAYA - Why Not', artist: 'Ghostface Playa', thumbnail: 'https://i.ytimg.com/vi/eB6tYB_4VmA/hqdefault.jpg' },
+        { id: 'LsoLEjrDogU', title: 'Martin Garrix - Animals', artist: 'Martin Garrix', thumbnail: 'https://i.ytimg.com/vi/LsoLEjrDogU/hqdefault.jpg' },
+        { id: 'ALZHF5UqnU4', title: 'Marshmello - Alone', artist: 'Marshmello', thumbnail: 'https://i.ytimg.com/vi/ALZHF5UqnU4/hqdefault.jpg' },
+        { id: '60ItHLz5WEA', title: 'Alan Walker - Faded', artist: 'Alan Walker', thumbnail: 'https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg' },
+        { id: 'papuvlVeZg8', title: 'Clean Bandit - Rather Be ft. Jess Glynne', artist: 'Clean Bandit', thumbnail: 'https://i.ytimg.com/vi/papuvlVeZg8/hqdefault.jpg' },
       ]
     },
     {
       name: 'Acoustic & Lo-Fi',
-      query: 'lofi hip hop beats chill study relax 2025',
+      query: 'acoustic chill mellow melodic songs',
       color: '#3f3f46',
       songs: [
-        { id: 'jfKfPfyJRdk', title: 'lofi hip hop radio - beats to relax/study to', artist: 'Lofi Girl', thumbnail: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg' },
-        { id: '5qap5aO4i9A', title: 'Lofi Hip Hop Chill Beats', artist: 'ChilledCow', thumbnail: 'https://i.ytimg.com/vi/5qap5aO4i9A/hqdefault.jpg' },
-        { id: 'DWcJFNfaw9c', title: 'Coffee Shop Radio // 24/7 lofi beats', artist: 'STEEZYASFUCK', thumbnail: 'https://i.ytimg.com/vi/DWcJFNfaw9c/hqdefault.jpg' },
-        { id: 'TURbeWK2wwg', title: 'Warm Nights - Chill Lo-Fi Study Music', artist: 'Kuma Beats', thumbnail: 'https://i.ytimg.com/vi/TURbeWK2wwg/hqdefault.jpg' },
+        { id: '2Vv-BfVoq4g', title: 'Ed Sheeran - Perfect', artist: 'Ed Sheeran', thumbnail: 'https://i.ytimg.com/vi/2Vv-BfVoq4g/hqdefault.jpg' },
+        { id: 'YQHsXMglC9A', title: 'Adele - Hello', artist: 'Adele', thumbnail: 'https://i.ytimg.com/vi/YQHsXMglC9A/hqdefault.jpg' },
+        { id: 'RgKAFK5djSk', title: 'Wiz Khalifa - See You Again ft. Charlie Puth', artist: 'Wiz Khalifa', thumbnail: 'https://i.ytimg.com/vi/RgKAFK5djSk/hqdefault.jpg' },
+        { id: '09R8_2nJtjg', title: 'Maroon 5 - Sugar', artist: 'Maroon 5', thumbnail: 'https://i.ytimg.com/vi/09R8_2nJtjg/hqdefault.jpg' },
       ]
     },
     {
       name: 'Global Melodies',
-      query: 'afrobeats reggaeton latin pop dance 2025',
+      query: 'global pop latin dance chart hits',
       color: '#52525b',
       songs: [
-        { id: 'armYs_s0YHg', title: 'Rema, Selena Gomez - Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/armYs_s0YHg/hqdefault.jpg' },
-        { id: 'tbneQD7hewE', title: 'Burna Boy - Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/tbneQD7hewE/hqdefault.jpg' },
-        { id: 'gNi_6U5Pm_o', title: 'Bad Bunny - Tití Me Preguntó', artist: 'Bad Bunny', thumbnail: 'https://i.ytimg.com/vi/gNi_6U5Pm_o/hqdefault.jpg' },
-        { id: 'saEpkcVi1d4', title: 'Rosalía, Rauw Alejandro - BESO', artist: 'ROSALÍA', thumbnail: 'https://i.ytimg.com/vi/saEpkcVi1d4/hqdefault.jpg' },
+        { id: 'k2qgadSvNyU', title: 'Dua Lipa - New Rules', artist: 'Dua Lipa', thumbnail: 'https://i.ytimg.com/vi/k2qgadSvNyU/hqdefault.jpg' },
+        { id: 'CevxZvSJLk8', title: 'Katy Perry - Roar', artist: 'Katy Perry', thumbnail: 'https://i.ytimg.com/vi/CevxZvSJLk8/hqdefault.jpg' },
+        { id: 'kJQP7kiw5Fk', title: 'Luis Fonsi - Despacito', artist: 'Luis Fonsi', thumbnail: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg' },
+        { id: 'OPf0YbXqDm0', title: 'Mark Ronson - Uptown Funk', artist: 'Mark Ronson', thumbnail: 'https://i.ytimg.com/vi/OPf0YbXqDm0/hqdefault.jpg' },
       ]
     },
     {
       name: 'Atmospheric Indie',
-      query: 'hyperpop indie rock synthwave 2025',
+      query: 'indie rock alternative anthem hits',
       color: '#71717a',
       songs: [
-        { id: 'gQlMMD8auMs', title: 'MGMT - Little Dark Age', artist: 'MGMT', thumbnail: 'https://i.ytimg.com/vi/gQlMMD8auMs/hqdefault.jpg' },
-        { id: 'H5v3kku4y6Q', title: 'Harry Styles - As It Was', artist: 'Harry Styles', thumbnail: 'https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg' },
-        { id: '0J2QdDbelmY', title: 'The White Stripes - Seven Nation Army', artist: 'The White Stripes', thumbnail: 'https://i.ytimg.com/vi/0J2QdDbelmY/hqdefault.jpg' },
+        { id: '7wtfhZwyrcc', title: 'Imagine Dragons - Believer', artist: 'Imagine Dragons', thumbnail: 'https://i.ytimg.com/vi/7wtfhZwyrcc/hqdefault.jpg' },
+        { id: '1w7OgIMMRc4', title: "Guns N' Roses - Sweet Child O' Mine", artist: "Guns N' Roses", thumbnail: 'https://i.ytimg.com/vi/1w7OgIMMRc4/hqdefault.jpg' },
+        { id: 'fJ9rUzIMcZQ', title: 'Queen - Bohemian Rhapsody', artist: 'Queen Official', thumbnail: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg' },
       ]
     },
     {
       name: 'Lyrical Hip-Hop',
-      query: 'underground rap boom bap drill hits',
+      query: 'top hip hop rap timeless anthems',
       color: '#a1a1aa',
       songs: [
         { id: 'tvTRZJ-4EyI', title: 'Kendrick Lamar - HUMBLE.', artist: 'Kendrick Lamar', thumbnail: 'https://i.ytimg.com/vi/tvTRZJ-4EyI/hqdefault.jpg' },
-        { id: 'Y2V6yn9Mx4A', title: 'J. Cole - No Role Modelz', artist: 'J. Cole', thumbnail: 'https://i.ytimg.com/vi/Y2V6yn9Mx4A/hqdefault.jpg' },
-        { id: 'wXhTHyIgQ_U', title: 'Post Malone - Circles', artist: 'Post Malone', thumbnail: 'https://i.ytimg.com/vi/wXhTHyIgQ_U/hqdefault.jpg' },
+        { id: 'uelHwf8o7_U', title: 'Eminem - Love The Way You Lie ft. Rihanna', artist: 'Eminem', thumbnail: 'https://i.ytimg.com/vi/uelHwf8o7_U/hqdefault.jpg' },
+        { id: 'RgKAFK5djSk', title: 'Wiz Khalifa - See You Again', artist: 'Wiz Khalifa', thumbnail: 'https://i.ytimg.com/vi/RgKAFK5djSk/hqdefault.jpg' },
       ]
     }
   ]
 
   const fetchGenZRecommendations = async () => {
     setIsLoadingIndianRecs(true)
-    const CACHE_KEY = 'dhun_genz_recommendations'
+    const CACHE_KEY = 'dhun_genz_recommendations_v3'
     try {
       const cached = sessionStorage.getItem(CACHE_KEY)
       if (cached) {
@@ -1420,7 +1426,7 @@ export default function App() {
                         {quickPicks.map((song, idx) => (
                           <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
                             <div className="quick-pick-thumb-wrap">
-                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" onError={handleImgError} decoding="async" />
                               <div className="quick-pick-overlay">
                                 <div className="quick-pick-play-btn">
                                   <PlayIcon size={16} fill="currentColor" />
@@ -1467,7 +1473,7 @@ export default function App() {
                               {p.songs.length > 0 ? (
                                 <div className="home-playlist-collage">
                                   {p.songs.slice(0, 4).map((s, i) => (
-                                    <img key={i} src={s.thumbnail} alt="" loading="lazy" />
+                                    <img key={i} src={s.thumbnail} alt="" onError={handleImgError} loading="lazy" decoding="async" />
                                   ))}
                                 </div>
                               ) : (
@@ -1516,7 +1522,7 @@ export default function App() {
                               <div className="rec-category-collage-inner">
                                 {category.songs.slice(0, 4).map((song, sIdx) => (
                                   <div key={sIdx} className="rec-category-collage-item">
-                                    <img src={song.thumbnail} alt="" loading="lazy" />
+                                    <img src={song.thumbnail} alt="" onError={handleImgError} loading="lazy" decoding="async" />
                                   </div>
                                 ))}
                               </div>
@@ -1560,7 +1566,7 @@ export default function App() {
                                   onPointerUp={handlePointerUp}
                                   onPointerLeave={handlePointerLeave}
                                 >
-                                  <img src={song.thumbnail} alt="" className="rec-song-thumb" />
+                                  <img src={song.thumbnail} alt="" className="rec-song-thumb" onError={handleImgError} decoding="async" />
                                   <div className="rec-song-details">
                                     <p className="rec-song-title">{song.title}</p>
                                     <p className="rec-song-artist">{song.artist}</p>
@@ -1606,7 +1612,7 @@ export default function App() {
                         {rediscoverSongs.map((song) => (
                           <div key={song.id} className="quick-pick-card" onClick={() => handlePlayQuickPick(song)}>
                             <div className="quick-pick-thumb-wrap">
-                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" />
+                              <img src={song.thumbnail} alt={song.title} className="quick-pick-img" onError={handleImgError} decoding="async" />
                               <div className="quick-pick-overlay">
                                 <div className="quick-pick-play-btn">
                                   <PlayIcon size={16} fill="currentColor" />
@@ -1657,6 +1663,8 @@ export default function App() {
                           src={currentTrack.thumbnail || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop'}
                           alt="Album Cover"
                           className="album-img"
+                          onError={handleImgError}
+                          decoding="async"
                         />
                       </div>
 
@@ -1772,7 +1780,7 @@ export default function App() {
                                     actuallyPlay(song)
                                   }}
                                 >
-                                  <img src={song.thumbnail} alt="" className="recommended-thumb" />
+                                  <img src={song.thumbnail} alt="" className="recommended-thumb" onError={handleImgError} decoding="async" />
                                   <div className="recommended-info">
                                     <p className="recommended-title">{song.title}</p>
                                     <p className="recommended-artist">{song.artist}</p>
@@ -1829,7 +1837,7 @@ export default function App() {
                             onPointerUp={handlePointerUp}
                             onPointerLeave={handlePointerLeave}
                           >
-                            <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
+                            <img src={song.thumbnail} alt="" className="playlist-song-thumb" onError={handleImgError} decoding="async" />
                             <div className="playlist-song-info">
                               <p className="playlist-song-title">{song.title}</p>
                               <p className="playlist-song-artist">{song.artist}</p>
@@ -1873,7 +1881,7 @@ export default function App() {
                             onPointerUp={handlePointerUp}
                             onPointerLeave={handlePointerLeave}
                           >
-                            <img src={song.thumbnail} alt="" className="playlist-song-thumb" />
+                            <img src={song.thumbnail} alt="" className="playlist-song-thumb" onError={handleImgError} decoding="async" />
                             <div className="playlist-song-info">
                               <p className="playlist-song-title">{song.title}</p>
                               <p className="playlist-song-artist">{song.artist}</p>
@@ -1967,7 +1975,7 @@ export default function App() {
                               setCurrentTrackIndex(0)
                               actuallyPlay(song)
                             }}>
-                              <img src={song.thumbnail} alt="" className="recent-thumb" />
+                              <img src={song.thumbnail} alt="" className="recent-thumb" onError={handleImgError} decoding="async" />
                               <div className="recent-info">
                                 <p className="recent-song-title">{song.title}</p>
                                 <p className="recent-song-artist">{song.artist}</p>
@@ -2009,7 +2017,7 @@ export default function App() {
                             onPointerLeave={handlePointerLeave}
                           >
                             <div className="explore-card-img">
-                              <img src={song.thumbnail} alt={song.title} />
+                              <img src={song.thumbnail} alt={song.title} onError={handleImgError} decoding="async" />
                             </div>
                             <div className="explore-card-info">
                               <div className="explore-card-title-row">
@@ -2052,7 +2060,7 @@ export default function App() {
                             onPointerLeave={handlePointerLeave}
                           >
                             <div className="explore-card-img">
-                              <img src={result.thumbnail} alt={result.title} />
+                              <img src={result.thumbnail} alt={result.title} onError={handleImgError} decoding="async" />
                             </div>
                             <div className="explore-card-info">
                               <div className="explore-card-title-row">
