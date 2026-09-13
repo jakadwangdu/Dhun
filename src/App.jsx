@@ -1689,7 +1689,7 @@ export default function App() {
                               <h4 className="rec-song-group-title">{category.name}</h4>
                             </div>
                             <div className="rec-song-list">
-                              {category.songs.slice(0, 5).map((song, songIdx) => (
+                              {category.songs.slice(0, 6).map((song, songIdx) => (
                                 <div
                                   key={song.id}
                                   className="rec-song-item"
@@ -1707,7 +1707,14 @@ export default function App() {
                                   onPointerUp={handlePointerUp}
                                   onPointerLeave={handlePointerLeave}
                                 >
-                                  <img src={song.thumbnail} alt="" className="rec-song-thumb" onError={handleImgError} decoding="async" />
+                                  <div className="rec-song-thumb-wrap">
+                                    <img src={song.thumbnail} alt="" className="rec-song-thumb" onError={handleImgError} decoding="async" />
+                                    <div className="rec-song-overlay">
+                                      <div className="rec-song-play-btn">
+                                        <PlayIcon size={14} fill="currentColor" />
+                                      </div>
+                                    </div>
+                                  </div>
                                   <div className="rec-song-details">
                                     <p className="rec-song-title">{song.title}</p>
                                     <p className="rec-song-artist">{song.artist}</p>
