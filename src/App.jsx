@@ -1184,30 +1184,56 @@ export default function App() {
               {showHeaderSearch && (
                 <div className="header-search-dropdown">
                   <div className="header-search-input-wrap">
-                    <Search size={15} className="header-search-icon" />
+                    <button
+                      type="button"
+                      className="header-search-mobile-close"
+                      onClick={() => {
+                        setShowHeaderSearch(false)
+                        setHeaderSearchQuery('')
+                        setHeaderSearchResults([])
+                      }}
+                      title="Close search"
+                      aria-label="Close search"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <Search size={16} className="header-search-icon" />
                     <input
                       ref={headerSearchInputRef}
-                      type="text"
+                      type="search"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck="false"
                       className="header-search-input"
                       placeholder="Search tracks, artists, genres..."
                       value={headerSearchQuery}
                       onChange={(e) => doHeaderSearch(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleHeaderSearchSubmit() } }}
-                      onBlur={() => setTimeout(() => { if (!headerSearchQuery) setShowHeaderSearch(false) }, 200)}
+                      onBlur={() => setTimeout(() => { if (!headerSearchQuery && window.innerWidth >= 768) setShowHeaderSearch(false) }, 200)}
                     />
                     {headerSearchQuery && (
-                      <button className="header-search-clear" onClick={() => { setHeaderSearchQuery(''); setHeaderSearchResults([]); headerSearchInputRef.current?.focus() }}>
-                        <X size={15} />
+                      <button
+                        type="button"
+                        className="header-search-clear"
+                        onClick={() => { setHeaderSearchQuery(''); setHeaderSearchResults([]); headerSearchInputRef.current?.focus() }}
+                        aria-label="Clear search input"
+                      >
+                        <X size={16} />
                       </button>
                     )}
                   </div>
                   {isHeaderSearching && (
-                    <div className="header-search-loading"><div className="spinner-sm" /></div>
+                    <div className="header-search-loading"><div className="spinner-sm" /><span>Searching catalogue...</span></div>
                   )}
                   {headerSearchResults.length > 0 && (
                     <div className="header-search-results">
                       {headerSearchResults.map(song => (
-                        <div key={song.id} className="header-search-result-item" onClick={() => playTrackFromHeader(song)}>
+                        <div
+                          key={song.id}
+                          className="header-search-result-item"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => playTrackFromHeader(song)}
+                        >
                           <img src={song.thumbnail} alt="" className="header-search-result-thumb" onError={handleImgError} decoding="async" />
                           <div className="header-search-result-info">
                             <p className="header-search-result-title">{song.title}</p>
@@ -1215,7 +1241,11 @@ export default function App() {
                           </div>
                         </div>
                       ))}
-                      <div className="header-search-see-all" onClick={handleHeaderSearchSubmit}>
+                      <div
+                        className="header-search-see-all"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleHeaderSearchSubmit}
+                      >
                         View all results for "{headerSearchQuery}" ➔
                       </div>
                     </div>
