@@ -4614,3 +4614,128 @@ input, pre, textarea, select {
     min-height: 28px;
   }
 }
+
+/* ==========================================================================
+   Android APK Download Elements
+   ========================================================================== */
+
+.header-download-apk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-main);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  text-decoration: none;
+  transition: all var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+}
+
+.header-download-apk-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-medium);
+  transform: translateY(-1px);
+}
+
+.header-download-apk-btn:active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 480px) {
+  .header-download-apk-btn span {
+    display: none;
+  }
+  .header-download-apk-btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+.sidebar-apk-btn {
+  text-decoration: none;
+}
+
+.home-hero-download-badge {
+  margin-top: 18px;
+  display: flex;
+}
+
+.hero-apk-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  color: var(--text-main);
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+}
+
+.hero-apk-download-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+}
+
+.hero-apk-download-btn:active {
+  transform: scale(0.98);
+}
+
+.hero-apk-btn-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+}
+
+.hero-apk-btn-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.hero-apk-btn-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+}
+
+.hero-apk-btn-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.hero-apk-dl-icon {
+  margin-left: 6px;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.hero-apk-download-btn:hover .hero-apk-dl-icon {
+  transform: translateY(2px);
+  color: var(--text-main);
+}
+
+.quick-menu-apk-item {
+  text-decoration: none;
+}
+

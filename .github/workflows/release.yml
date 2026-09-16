@@ -1,0 +1,40 @@
+name: Release Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Dhun Music Android App ${{ github.ref_name }}
+          files: Dhun.apk
+          draft: false
+          prerelease: false
+          body: |
+            ## 🎵 Dhun Music for Android
+
+            Install the standalone Android application directly on your phone:
+            - **Ultra HD Master Audio Quality** with procedural spatial soundscapes.
+            - **Optimized 2-Column Mobile Grid** for smartphones.
+            - **Zero Ads / Distilled Aesthetic** with sleek black monochrome branding.
+            - **Offline-ready native shell** via Capacitor.
+
+            ### Installation:
+            1. Download `Dhun.apk` below.
+            2. Tap the downloaded file in your file manager / browser.
+            3. Allow "Install unknown apps" if prompted, and enjoy!

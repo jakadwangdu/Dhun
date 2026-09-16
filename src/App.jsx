@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc, Smartphone, Download } from 'lucide-react'
 import './App.css'
-import logoVector from './logo_vector.svg'
+import logoBlack from './logo_black.png'
 import qrCode from '../qr.png'
 import { immersionEngine } from './utils/immersionEngine'
 
@@ -1506,7 +1506,7 @@ export default function App() {
         {/* Desktop Editorial Sidebar (Laptops & Desktops >= 1024px) */}
         <aside className="desktop-sidebar">
           <div className="sidebar-brand" onClick={() => navigateTo('welcome')}>
-            <img src={logoVector} alt="Dhun Logo" className="sidebar-brand-logo" />
+            <img src={logoBlack} alt="Dhun Logo" className="sidebar-brand-logo" />
             <div className="sidebar-brand-text">
               <h1 className="sidebar-title">Dhun</h1>
               <span className="sidebar-edition">Audio Edition / Vol. 04</span>
@@ -1566,6 +1566,10 @@ export default function App() {
 
           <div className="sidebar-footer">
             <div className="sidebar-actions">
+              <a href="./Dhun.apk" download="Dhun.apk" className="sidebar-action-btn sidebar-apk-btn" title="Download Android APK">
+                <Smartphone size={15} />
+                <span>Get APK</span>
+              </a>
               <button onClick={openSettings} className="sidebar-action-btn" title="Settings">
                 <Settings size={15} />
                 <span>Settings</span>
@@ -1590,7 +1594,7 @@ export default function App() {
                 <ChevronLeft size={20} />
               </button>
               <div className="header-brand-mark" onClick={() => navigateTo('welcome')} role="button" tabIndex={0}>
-                <img src={logoVector} alt="Dhun Logo" className="header-brand-logo" />
+                <img src={logoBlack} alt="Dhun Logo" className="header-brand-logo" />
                 <span className="header-brand-title">Dhun</span>
               </div>
             </div>
@@ -1677,6 +1681,15 @@ export default function App() {
             </div>
 
             <div className="header-actions">
+              <a
+                href="./Dhun.apk"
+                download="Dhun.apk"
+                className="header-download-apk-btn"
+                title="Download Dhun Android APK"
+              >
+                <Smartphone size={15} />
+                <span>Get App</span>
+              </a>
               <button onClick={openSettings} className="icon-btn header-settings-btn" title="Settings" aria-label="Settings">
                 <Settings size={18} />
               </button>
@@ -1727,6 +1740,23 @@ export default function App() {
                     <div className="home-hero-text">
                       <h1 className="home-hero-title">Dhun</h1>
                       <p className="home-hero-subtitle">A quiet, distilled sanctuary for music discovery and contemplation.</p>
+                    </div>
+                    <div className="home-hero-download-badge">
+                      <a
+                        href="./Dhun.apk"
+                        download="Dhun.apk"
+                        className="hero-apk-download-btn"
+                        title="Download Dhun Android APK"
+                      >
+                        <div className="hero-apk-btn-icon-wrap">
+                          <Smartphone size={20} />
+                        </div>
+                        <div className="hero-apk-btn-text">
+                          <span className="hero-apk-btn-title">Get Android App</span>
+                          <span className="hero-apk-btn-meta">Direct APK • v1.0 (~4.3 MB)</span>
+                        </div>
+                        <Download size={18} className="hero-apk-dl-icon" />
+                      </a>
                     </div>
                   </div>
                 </section>
@@ -2949,7 +2979,7 @@ export default function App() {
             <div className="quick-menu-drawer" onClick={(e) => e.stopPropagation()}>
               <div className="quick-menu-header">
                 <div className="quick-menu-brand">
-                  <img src={logoVector} alt="" className="quick-menu-logo" />
+                  <img src={logoBlack} alt="" className="quick-menu-logo" />
                   <div>
                     <h3 className="quick-menu-title">Dhun Music</h3>
                     <span className="quick-menu-subtitle">Audio Edition • Vol. 04</span>
@@ -3003,6 +3033,18 @@ export default function App() {
                 <div className="quick-menu-section">
                   <span className="quick-menu-section-label">Preferences & Controls</span>
                   <div className="quick-menu-actions">
+                    <a
+                      href="./Dhun.apk"
+                      download="Dhun.apk"
+                      className="quick-menu-action-item quick-menu-apk-item"
+                      onClick={() => setShowQuickMenu(false)}
+                    >
+                      <div className="quick-menu-action-left">
+                        <Smartphone size={18} />
+                        <span>Download Android APK</span>
+                      </div>
+                      <span className="quick-menu-pill highlight">v1.0 APK</span>
+                    </a>
                     <button
                       className="quick-menu-action-item"
                       onClick={() => { setShowQuickMenu(false); setShowImmersionModal(true) }}
