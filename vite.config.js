@@ -17,10 +17,13 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
               const url = new URL(proxyReq.path, 'https://www.googleapis.com')
-              if (!url.searchParams.get('key') && YOUTUBE_API_KEY) {
-                url.searchParams.set('key', YOUTUBE_API_KEY)
-              }
+              url.searchParams.delete('key')
               proxyReq.path = url.pathname + url.search
+
+              const clientKey = proxyReq.getHeader('x-goog-api-key')
+              if (!clientKey && YOUTUBE_API_KEY) {
+                proxyReq.setHeader('x-goog-api-key', YOUTUBE_API_KEY)
+              }
             })
           }
         }

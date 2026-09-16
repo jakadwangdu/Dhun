@@ -13,21 +13,64 @@ const getApiKey = () => {
   return stored || DEFAULT_YOUTUBE_API_KEY
 }
 
-const buildApiUrl = (endpoint) => {
-  const key = getApiKey()
-  const separator = endpoint.includes('?') ? '&' : '?'
-  if (import.meta.env.DEV) {
-    return key ? `${YOUTUBE_API_BASE}${endpoint}${separator}key=${encodeURIComponent(key)}` : `${YOUTUBE_API_BASE}${endpoint}`
-  }
-  return `${YOUTUBE_API_BASE}${endpoint}${separator}key=${encodeURIComponent(key)}`
+const maskApiKey = (str) => {
+  if (!str || typeof str !== 'string') return str
+  return str
+    .replace(/AIza[0-9A-Za-z-_]{35}/g, 'AIza[REDACTED]')
+    .replace(/([?&]key=)[^&]+/g, '$1[REDACTED]')
 }
 
-const fetchWithRetry = async (url, options) => {
+// Global console sanitizer: prevents accidental API key exposure in browser DevTools / console logs
+if (typeof window !== 'undefined') {
+  const sanitizeArg = (arg) => {
+    if (typeof arg === 'string') return maskApiKey(arg)
+    if (arg instanceof Error) {
+      const cloned = new Error(maskApiKey(arg.message))
+      cloned.name = arg.name
+      if (arg.stack) cloned.stack = maskApiKey(arg.stack)
+      return cloned
+    }
+    if (typeof arg === 'object' && arg !== null) {
+      try {
+        const json = JSON.stringify(arg)
+        if (json.includes('AIza') || json.includes('key=')) {
+          return JSON.parse(maskApiKey(json))
+        }
+      } catch (e) {}
+    }
+    return arg
+  }
+
+  const origWarn = console.warn
+  const origError = console.error
+  const origLog = console.log
+
+  console.warn = (...args) => origWarn.apply(console, args.map(sanitizeArg))
+  console.error = (...args) => origError.apply(console, args.map(sanitizeArg))
+  console.log = (...args) => origLog.apply(console, args.map(sanitizeArg))
+}
+
+const buildApiUrl = (endpoint) => {
+  // Never put API keys in the URL query string to prevent browser console network URL leaks
+  return `${YOUTUBE_API_BASE}${endpoint}`
+}
+
+const fetchWithRetry = async (url, options = {}) => {
   let delay = 1000
   let lastError
+  const key = getApiKey()
+  const customHeaders = {
+    ...(options.headers || {}),
+    ...(key ? { 'X-Goog-Api-Key': key } : {})
+  }
+  const fetchOptions = {
+    ...options,
+    headers: customHeaders
+  }
+
   for (let i = 0; i < 3; i++) {
     try {
-      const response = await fetch(url, options)
+      const response = await fetch(url, fetchOptions)
       if (response.status === 429 || response.status === 403) {
         try { sessionStorage.setItem('dhun_api_rate_limited', 'true') } catch (e) {}
         throw new Error(`Rate limit or quota reached (HTTP ${response.status})`)
@@ -38,7 +81,7 @@ const fetchWithRetry = async (url, options) => {
           const errData = await response.json()
           errMsg = errData.error?.message || errMsg
         } catch (e) {}
-        throw new Error(errMsg)
+        throw new Error(maskApiKey(errMsg))
       }
       return response
     } catch (error) {
@@ -643,7 +686,7 @@ export default function App() {
         return
       }
     } catch (e) {
-      console.warn('Auto fallback search failed:', e)
+      console.warn('Auto fallback search failed:', maskApiKey(e?.message || 'Search failed'))
     }
 
     setPlayerError('No playable alternative found. Playing next track...')
@@ -824,7 +867,7 @@ export default function App() {
 
       setLyrics(null)
     } catch (e) {
-      console.warn('Lyrics fetch failed:', e)
+      console.warn('Lyrics fetch failed:', maskApiKey(e?.message || 'Fetch failed'))
       setLyrics(null)
     } finally {
       setIsLoadingLyrics(false)
