@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc } from 'lucide-react'
 import './App.css'
 import logoVector from './logo_vector.svg'
 import qrCode from '../qr.png'
+import { immersionEngine } from './utils/immersionEngine'
 
 const DEFAULT_YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
 const YOUTUBE_API_BASE = import.meta.env.DEV ? '/api/youtube' : 'https://www.googleapis.com/youtube/v3'
@@ -54,15 +55,39 @@ const fetchWithRetry = async (url, options) => {
   throw lastError
 }
 
-function loadVideoSafely(player, videoId) {
+let currentQualityPreference = 'highres'
+
+function enforceHighestQuality(player, quality = currentQualityPreference) {
+  if (!player) return
+  try {
+    const available = typeof player.getAvailableQualityLevels === 'function' ? player.getAvailableQualityLevels() : []
+    let targetQuality = quality
+    if (quality === 'highres' && available && available.length > 0) {
+      const hierarchy = ['highres', 'hd1440', 'hd1080', 'hd720', 'large', 'medium']
+      for (const q of hierarchy) {
+        if (available.includes(q)) {
+          targetQuality = q
+          break
+        }
+      }
+    }
+    if (typeof player.setPlaybackQuality === 'function') {
+      player.setPlaybackQuality(targetQuality)
+    }
+  } catch (e) {}
+}
+
+function loadVideoSafely(player, videoId, quality = currentQualityPreference) {
   if (!player) return false
   setPlayerError(null)
   try {
-    player.loadVideoById({ videoId, suggestedQuality: 'default' })
+    player.loadVideoById({ videoId, suggestedQuality: quality })
+    setTimeout(() => enforceHighestQuality(player, quality), 250)
     return true
   } catch (e) {
     try {
       player.cueVideoById(videoId)
+      setTimeout(() => enforceHighestQuality(player, quality), 250)
       return true
     } catch (e2) {
       return false
@@ -146,6 +171,45 @@ export default function App() {
       [catIdx]: !prev[catIdx]
     }))
   }
+
+  // Audio Quality & Immersion states
+  const [audioQuality, setAudioQuality] = useState(() => localStorage.getItem('dhun_audio_quality') || 'highres')
+  const [immersionPreset, setImmersionPreset] = useState(() => localStorage.getItem('dhun_immersion_preset') || 'studio')
+  const [soundscapeType, setSoundscapeType] = useState(() => localStorage.getItem('dhun_soundscape') || 'none')
+  const [soundscapeVolume, setSoundscapeVolume] = useState(() => parseFloat(localStorage.getItem('dhun_soundscape_vol') || '0.2'))
+  const [ambientGlowEnabled, setAmbientGlowEnabled] = useState(() => localStorage.getItem('dhun_ambient_glow') !== 'false')
+  const [showImmersionModal, setShowImmersionModal] = useState(false)
+  const [activePlaybackQuality, setActivePlaybackQuality] = useState('highres')
+
+  useEffect(() => {
+    currentQualityPreference = audioQuality
+    localStorage.setItem('dhun_audio_quality', audioQuality)
+    if (playerRef.current) {
+      enforceHighestQuality(playerRef.current, audioQuality)
+    }
+  }, [audioQuality])
+
+  useEffect(() => {
+    localStorage.setItem('dhun_soundscape', soundscapeType)
+    immersionEngine.setSoundscape(soundscapeType)
+  }, [soundscapeType])
+
+  useEffect(() => {
+    localStorage.setItem('dhun_soundscape_vol', soundscapeVolume.toString())
+    immersionEngine.setVolume(soundscapeVolume)
+  }, [soundscapeVolume])
+
+  useEffect(() => {
+    immersionEngine.setPlaying(isPlaying)
+  }, [isPlaying])
+
+  useEffect(() => {
+    localStorage.setItem('dhun_immersion_preset', immersionPreset)
+  }, [immersionPreset])
+
+  useEffect(() => {
+    localStorage.setItem('dhun_ambient_glow', ambientGlowEnabled ? 'true' : 'false')
+  }, [ambientGlowEnabled])
 
   const progressInterval = useRef(null)
   const trendingFetched = useRef(false)
@@ -283,12 +347,19 @@ export default function App() {
             if (pendingTrackRef.current) {
               const t = pendingTrackRef.current
               pendingTrackRef.current = null
-              loadVideoSafely(p, t.id)
+              loadVideoSafely(p, t.id, audioQuality)
+            } else {
+              enforceHighestQuality(p, audioQuality)
             }
           },
           onStateChange: (event) => {
             if (event.data === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true)
+              enforceHighestQuality(event.target, audioQuality)
+              try {
+                const q = event.target.getPlaybackQuality?.()
+                if (q && q !== 'unknown') setActivePlaybackQuality(q)
+              } catch (e) {}
               const dur = event.target.getDuration()
               if (typeof dur === 'number' && !isNaN(dur) && dur > 0) {
                 setDuration(dur)
@@ -303,7 +374,9 @@ export default function App() {
               handleTrackEndRef.current()
             } else if (event.data === window.YT.PlayerState.BUFFERING) {
               // Video is buffering, continue updating or keep current state
+              enforceHighestQuality(event.target, audioQuality)
             } else if (event.data === window.YT.PlayerState.CUED) {
+              enforceHighestQuality(event.target, audioQuality)
               event.target.playVideo()
             }
           },
@@ -376,12 +449,12 @@ export default function App() {
     const p = playerRef.current
     if (p && playerReadyRef.current) {
       setPlayerError(null)
-      const ok = loadVideoSafely(p, track.id)
+      const ok = loadVideoSafely(p, track.id, audioQuality)
       if (!ok) setPlayerError('Could not play this video')
     } else {
       pendingTrackRef.current = track
     }
-  }, [])
+  }, [audioQuality])
 
   const playTrack = useCallback((index, trackQueue = queue) => {
     if (!trackQueue || trackQueue.length === 0) return
@@ -562,7 +635,7 @@ export default function App() {
 
         const p = playerRef.current
         if (p) {
-          loadVideoSafely(p, altVideoId)
+          loadVideoSafely(p, altVideoId, audioQuality)
           setTimeout(() => {
             try { p.playVideo() } catch(e) {}
           }, 300)
@@ -1926,7 +1999,29 @@ export default function App() {
                 <div className="track-info">
                   {currentTrack ? (
                     <div className="track-header-box">
-                      <span className="track-edition-tag">{isPlaying ? 'Now Playing' : 'Paused'} • Stereo 320k</span>
+                      <div className="track-header-meta">
+                        <button
+                          className="hifi-status-badge"
+                          onClick={() => setShowImmersionModal(true)}
+                          title="Click to customize Audio Quality & Immersion"
+                        >
+                          <div className={`hifi-wave-bars ${isPlaying ? 'playing' : ''}`}>
+                            <span className="wave-bar bar-1"></span>
+                            <span className="wave-bar bar-2"></span>
+                            <span className="wave-bar bar-3"></span>
+                            <span className="wave-bar bar-4"></span>
+                            <span className="wave-bar bar-5"></span>
+                          </div>
+                          <span className="hifi-badge-text">
+                            {audioQuality === 'highres' ? 'HI-RES MASTER • 1080P' : audioQuality === 'hd720' ? 'STUDIO HD • 720P' : 'BALANCED AUDIO'}
+                          </span>
+                          <span className="hifi-preset-pill">
+                            {immersionPreset === 'studio' ? 'Studio Pure' : immersionPreset === 'bass' ? 'Bass Boost' : immersionPreset === 'acoustic' ? 'Acoustic Warmth' : '3D Spatial'}
+                          </span>
+                          <Sparkles size={13} className="hifi-badge-sparkle" />
+                        </button>
+                        <span className="track-edition-tag">{isPlaying ? 'Now Playing' : 'Paused'}</span>
+                      </div>
                       <h1 className="track-title">{currentTrack.title}</h1>
                       <p className="track-artist">{currentTrack.artist}</p>
                     </div>
@@ -1947,14 +2042,22 @@ export default function App() {
                 {currentTrack && (
                   <div className="player-grid-layout">
                     <div className="player-deck-main">
-                      <div className="album-art-container">
-                        <img
-                          src={currentTrack.thumbnail || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop'}
-                          alt="Album Cover"
-                          className="album-img"
-                          onError={handleImgError}
-                          decoding="async"
-                        />
+                      <div className="album-art-wrapper">
+                        {ambientGlowEnabled && (
+                          <div
+                            className={`album-ambient-aura ${isPlaying ? 'pulsing' : ''}`}
+                            style={{ backgroundImage: `url(${currentTrack.thumbnail})` }}
+                          />
+                        )}
+                        <div className="album-art-container">
+                          <img
+                            src={currentTrack.thumbnail || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop'}
+                            alt="Album Cover"
+                            className="album-img"
+                            onError={handleImgError}
+                            decoding="async"
+                          />
+                        </div>
                       </div>
 
                       <div className="seek-section">
@@ -2004,6 +2107,14 @@ export default function App() {
                         >
                           <Heart size={15} fill={isLiked(currentTrack) ? 'currentColor' : 'none'} />
                           <span>{isLiked(currentTrack) ? 'Liked' : 'Like'}</span>
+                        </button>
+                        <button
+                          onClick={() => setShowImmersionModal(true)}
+                          className={`player-action-btn${soundscapeType !== 'none' || immersionPreset !== 'studio' ? ' active-action-btn' : ''}`}
+                          title="Hi-Fi Quality & Spatial Immersion"
+                        >
+                          <Sparkles size={15} />
+                          <span>Immersion</span>
                         </button>
                         <button onClick={toggleLyrics} className={`player-action-btn${showLyrics ? ' active-action-btn' : ''}`}>
                           <Mic2 size={15} />
@@ -2442,6 +2553,14 @@ export default function App() {
 
               <div className="dock-right-actions">
                 <button
+                  onClick={() => setShowImmersionModal(true)}
+                  className={`dock-action-btn dock-hifi-btn${soundscapeType !== 'none' || immersionPreset !== 'studio' ? ' active' : ''}`}
+                  title="Hi-Fi Quality & Spatial Immersion"
+                >
+                  <Sparkles size={15} />
+                  <span className="dock-hifi-label">Hi-Fi</span>
+                </button>
+                <button
                   onClick={() => toggleLike(currentTrack)}
                   className={`dock-action-btn${isLiked(currentTrack) ? ' liked' : ''}`}
                   title={isLiked(currentTrack) ? 'Unlike' : 'Like'}
@@ -2608,6 +2727,179 @@ export default function App() {
           </div>
         )}
 
+        {/* Hi-Fi & Spatial Immersion Modal */}
+        {showImmersionModal && (
+          <div className="coffee-modal-overlay" onClick={() => setShowImmersionModal(false)}>
+            <div className="coffee-modal immersion-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="immersion-modal-title-row">
+                  <Sparkles size={18} className="immersion-title-icon" />
+                  <h3 className="coffee-modal-title">Hi-Fi & Sound Immersion</h3>
+                </div>
+                <button className="coffee-modal-close" onClick={() => setShowImmersionModal(false)} aria-label="Close modal">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="coffee-modal-content immersion-modal-content">
+                {/* 1. Stream Audio Quality */}
+                <div className="immersion-section">
+                  <div className="immersion-section-header">
+                    <span className="immersion-section-title">Stream Fidelity Tier</span>
+                    <span className="immersion-badge-gold">
+                      {audioQuality === 'highres' ? '1080p Master' : audioQuality === 'hd720' ? '720p HD' : 'Adaptive'}
+                    </span>
+                  </div>
+                  <div className="immersion-grid-3">
+                    <button
+                      className={`immersion-card ${audioQuality === 'highres' ? 'active' : ''}`}
+                      onClick={() => setAudioQuality('highres')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">Ultra HD Master</span>
+                        {audioQuality === 'highres' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Max 256kbps audio stream & studio depth (1080p)</p>
+                    </button>
+
+                    <button
+                      className={`immersion-card ${audioQuality === 'hd720' ? 'active' : ''}`}
+                      onClick={() => setAudioQuality('hd720')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">Studio HD</span>
+                        {audioQuality === 'hd720' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Crisp 192kbps dynamic audio fidelity (720p)</p>
+                    </button>
+
+                    <button
+                      className={`immersion-card ${audioQuality === 'default' ? 'active' : ''}`}
+                      onClick={() => setAudioQuality('default')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">Balanced</span>
+                        {audioQuality === 'default' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Optimized adaptive streaming for mobile data</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Acoustic Profiles */}
+                <div className="immersion-section">
+                  <div className="immersion-section-header">
+                    <span className="immersion-section-title">Acoustic Immersion Profile</span>
+                  </div>
+                  <div className="immersion-grid-2">
+                    <button
+                      className={`immersion-card ${immersionPreset === 'studio' ? 'active' : ''}`}
+                      onClick={() => setImmersionPreset('studio')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">Studio Pure</span>
+                        {immersionPreset === 'studio' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Original transparent mix with linear studio response</p>
+                    </button>
+
+                    <button
+                      className={`immersion-card ${immersionPreset === 'bass' ? 'active' : ''}`}
+                      onClick={() => setImmersionPreset('bass')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">Deep Bass Vibe</span>
+                        {immersionPreset === 'bass' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Sub-bass harmonic presence with punchy warmth</p>
+                    </button>
+
+                    <button
+                      className={`immersion-card ${immersionPreset === 'acoustic' ? 'active' : ''}`}
+                      onClick={() => setImmersionPreset('acoustic')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">Acoustic Warmth</span>
+                        {immersionPreset === 'acoustic' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Lush vocal clarity and intimate analog resonance</p>
+                    </button>
+
+                    <button
+                      className={`immersion-card ${immersionPreset === 'spatial' ? 'active' : ''}`}
+                      onClick={() => setImmersionPreset('spatial')}
+                    >
+                      <div className="immersion-card-header">
+                        <span className="immersion-card-title">3D Spatial Hall</span>
+                        {immersionPreset === 'spatial' && <Check size={14} />}
+                      </div>
+                      <p className="immersion-card-desc">Expanded acoustic soundstage for headphones</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Spatial Ambient Soundscapes (Web Audio API) */}
+                <div className="immersion-section">
+                  <div className="immersion-section-header">
+                    <div className="immersion-section-title-wrap">
+                      <Volume2 size={15} />
+                      <span className="immersion-section-title">Spatial Soundscape Layer</span>
+                    </div>
+                    {soundscapeType !== 'none' && (
+                      <span className="immersion-active-tag">Active Layer</span>
+                    )}
+                  </div>
+                  <div className="immersion-pills-row">
+                    {[
+                      { id: 'none', label: 'Off' },
+                      { id: 'resonance', label: '432 Hz Theta' },
+                      { id: 'vinyl', label: 'Vinyl Warmth' },
+                      { id: 'rain', label: 'Gentle Rain' }
+                    ].map(s => (
+                      <button
+                        key={s.id}
+                        className={`immersion-pill-btn ${soundscapeType === s.id ? 'active' : ''}`}
+                        onClick={() => setSoundscapeType(s.id)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {soundscapeType !== 'none' && (
+                    <div className="soundscape-volume-wrap">
+                      <div className="soundscape-volume-labels">
+                        <span className="soundscape-vol-text">Ambience Level</span>
+                        <span className="soundscape-vol-num">{Math.round(soundscapeVolume * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={soundscapeVolume}
+                        onChange={(e) => setSoundscapeVolume(parseFloat(e.target.value))}
+                        className="immersion-slider"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Visual Ambient Aura Glow */}
+                <div className="immersion-toggle-row" onClick={() => setAmbientGlowEnabled(!ambientGlowEnabled)}>
+                  <div className="immersion-toggle-info">
+                    <span className="immersion-toggle-title">Reactive Album Aura</span>
+                    <span className="immersion-toggle-subtitle">Pulsating ambient lighting around album artwork</span>
+                  </div>
+                  <div className={`immersion-switch ${ambientGlowEnabled ? 'on' : ''}`}>
+                    <div className="immersion-switch-knob" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mobile Quick Menu Drawer */}
         {showQuickMenu && (
           <div className="quick-menu-overlay" onClick={() => setShowQuickMenu(false)}>
@@ -2668,6 +2960,18 @@ export default function App() {
                 <div className="quick-menu-section">
                   <span className="quick-menu-section-label">Preferences & Controls</span>
                   <div className="quick-menu-actions">
+                    <button
+                      className="quick-menu-action-item"
+                      onClick={() => { setShowQuickMenu(false); setShowImmersionModal(true) }}
+                    >
+                      <div className="quick-menu-action-left">
+                        <Sparkles size={18} />
+                        <span>Hi-Fi & Immersion</span>
+                      </div>
+                      <span className="quick-menu-pill">
+                        {audioQuality === 'highres' ? '1080p Master' : '720p HD'}
+                      </span>
+                    </button>
                     <button
                       className="quick-menu-action-item"
                       onClick={() => { setShowQuickMenu(false); openSettings() }}
