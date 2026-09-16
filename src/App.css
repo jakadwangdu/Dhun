@@ -2380,6 +2380,63 @@ input, pre, textarea, select {
   letter-spacing: 0.1em;
 }
 
+.playlists-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.import-playlists-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 15px;
+  min-height: 42px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.import-playlists-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-medium);
+  transform: translateY(-1px);
+}
+
+.import-playlists-btn:active {
+  transform: scale(0.96);
+}
+
+.import-empty-playlists-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 11px 20px;
+  background: var(--text-main);
+  color: var(--bg-surface);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.import-empty-playlists-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.import-empty-playlists-btn:active {
+  transform: scale(0.96);
+}
+
 .create-playlist-btn {
   display: flex;
   align-items: center;

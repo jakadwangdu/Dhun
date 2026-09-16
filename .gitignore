@@ -3,7 +3,7 @@ node_modules
 .DS_Store
 Thumbs.db
 IMPSKILL.md
-app/
+/app/
 App-Dhun-music/
 .agents/
 skills-lock.json

@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc, Smartphone, Download } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc, Smartphone, Download, RefreshCw } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
 import './App.css'
 import logoBlack from './logo_black.png'
 import qrCode from '../qr.png'
 import { immersionEngine } from './utils/immersionEngine'
+import { DEFAULT_CURATED_PLAYLISTS } from './data/defaultPlaylists'
+import { initBackgroundAudioShield, startAudioKeeper, pauseAudioKeeper, updateMediaSession } from './utils/backgroundAudio'
+
+initBackgroundAudioShield()
 
 const DEFAULT_YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || ''
 const YOUTUBE_API_BASE = import.meta.env.DEV ? '/api/youtube' : 'https://www.googleapis.com/youtube/v3'
@@ -166,9 +171,17 @@ export default function App() {
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false)
   const [showLyrics, setShowLyrics] = useState(false)
 
+  const isNativePlatform = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.location.hostname === 'localhost'))
+
   const [playlists, setPlaylists] = useState(() => {
-    const saved = localStorage.getItem('dhun_playlists')
-    return saved ? JSON.parse(saved) : []
+    try {
+      const saved = localStorage.getItem('dhun_playlists')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch (e) {}
+    return DEFAULT_CURATED_PLAYLISTS
   })
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null)
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false)
@@ -398,6 +411,7 @@ export default function App() {
           onStateChange: (event) => {
             if (event.data === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true)
+              startAudioKeeper()
               enforceHighestQuality(event.target, audioQuality)
               try {
                 const q = event.target.getPlaybackQuality?.()
@@ -410,9 +424,11 @@ export default function App() {
               startProgressTimer(event.target)
             } else if (event.data === window.YT.PlayerState.PAUSED) {
               setIsPlaying(false)
+              pauseAudioKeeper()
               stopProgressTimer()
             } else if (event.data === window.YT.PlayerState.ENDED) {
               setIsPlaying(false)
+              pauseAudioKeeper()
               stopProgressTimer()
               handleTrackEndRef.current()
             } else if (event.data === window.YT.PlayerState.BUFFERING) {
@@ -988,6 +1004,16 @@ export default function App() {
   const deletePlaylist = (id) => {
     setPlaylists(playlists.filter(p => p.id !== id))
     if (selectedPlaylistId === id) setSelectedPlaylistId(null)
+  }
+
+  const importWebPlaylists = () => {
+    setPlaylists(prev => {
+      const existingNames = new Set(prev.map(p => p.name))
+      const toAdd = DEFAULT_CURATED_PLAYLISTS.filter(p => !existingNames.has(p.name))
+      const updated = toAdd.length > 0 ? [...toAdd, ...prev] : DEFAULT_CURATED_PLAYLISTS
+      try { localStorage.setItem('dhun_playlists', JSON.stringify(updated)) } catch (e) {}
+      return updated
+    })
   }
 
   const addSongToPlaylist = (playlistId) => {
@@ -1566,10 +1592,12 @@ export default function App() {
 
           <div className="sidebar-footer">
             <div className="sidebar-actions">
-              <a href="./Dhun.apk" download="Dhun.apk" className="sidebar-action-btn sidebar-apk-btn" title="Download Android APK">
-                <Smartphone size={15} />
-                <span>Get APK</span>
-              </a>
+              {!isNativePlatform && (
+                <a href="./Dhun.apk" download="Dhun.apk" className="sidebar-action-btn sidebar-apk-btn" title="Download Android APK">
+                  <Smartphone size={15} />
+                  <span>Get APK</span>
+                </a>
+              )}
               <button onClick={openSettings} className="sidebar-action-btn" title="Settings">
                 <Settings size={15} />
                 <span>Settings</span>
@@ -1681,15 +1709,17 @@ export default function App() {
             </div>
 
             <div className="header-actions">
-              <a
-                href="./Dhun.apk"
-                download="Dhun.apk"
-                className="header-download-apk-btn"
-                title="Download Dhun Android APK"
-              >
-                <Smartphone size={15} />
-                <span>Get App</span>
-              </a>
+              {!isNativePlatform && (
+                <a
+                  href="./Dhun.apk"
+                  download="Dhun.apk"
+                  className="header-download-apk-btn"
+                  title="Download Dhun Android APK"
+                >
+                  <Smartphone size={15} />
+                  <span>Get App</span>
+                </a>
+              )}
               <button onClick={openSettings} className="icon-btn header-settings-btn" title="Settings" aria-label="Settings">
                 <Settings size={18} />
               </button>
@@ -1741,23 +1771,25 @@ export default function App() {
                       <h1 className="home-hero-title">Dhun</h1>
                       <p className="home-hero-subtitle">A quiet, distilled sanctuary for music discovery and contemplation.</p>
                     </div>
-                    <div className="home-hero-download-badge">
-                      <a
-                        href="./Dhun.apk"
-                        download="Dhun.apk"
-                        className="hero-apk-download-btn"
-                        title="Download Dhun Android APK"
-                      >
-                        <div className="hero-apk-btn-icon-wrap">
-                          <Smartphone size={20} />
-                        </div>
-                        <div className="hero-apk-btn-text">
-                          <span className="hero-apk-btn-title">Get Android App</span>
-                          <span className="hero-apk-btn-meta">Direct APK • v1.0 (~4.3 MB)</span>
-                        </div>
-                        <Download size={18} className="hero-apk-dl-icon" />
-                      </a>
-                    </div>
+                    {!isNativePlatform && (
+                      <div className="home-hero-download-badge">
+                        <a
+                          href="./Dhun.apk"
+                          download="Dhun.apk"
+                          className="hero-apk-download-btn"
+                          title="Download Dhun Android APK"
+                        >
+                          <div className="hero-apk-btn-icon-wrap">
+                            <Smartphone size={20} />
+                          </div>
+                          <div className="hero-apk-btn-text">
+                            <span className="hero-apk-btn-title">Get Android App</span>
+                            <span className="hero-apk-btn-meta">Direct APK • v1.0 (~9.5 MB)</span>
+                          </div>
+                          <Download size={18} className="hero-apk-dl-icon" />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -2374,10 +2406,16 @@ export default function App() {
                         <h2 className="playlists-title">Collections</h2>
                         <span className="playlists-subtitle">Personal Audio Libraries</span>
                       </div>
-                      <button onClick={() => setIsCreatingPlaylist(true)} className="create-playlist-btn">
-                        <Plus size={16} />
-                        New Playlist
-                      </button>
+                      <div className="playlists-header-actions">
+                        <button onClick={importWebPlaylists} className="import-playlists-btn" title="Import web curated playlists">
+                          <RefreshCw size={14} />
+                          <span>Import Web Playlists</span>
+                        </button>
+                        <button onClick={() => setIsCreatingPlaylist(true)} className="create-playlist-btn">
+                          <Plus size={16} />
+                          New Playlist
+                        </button>
+                      </div>
                     </div>
 
                     {isCreatingPlaylist && (
@@ -2412,8 +2450,12 @@ export default function App() {
                     {playlists.length === 0 ? (
                       <div className="playlists-empty">
                         <ListMusic size={36} />
-                        <p>No playlists created yet</p>
-                        <span>Create your first collection to curate your sound library</span>
+                        <p>No playlists loaded yet</p>
+                        <span>Import the curated web playlists or create your own collection</span>
+                        <button onClick={importWebPlaylists} className="import-empty-playlists-btn">
+                          <RefreshCw size={14} />
+                          <span>Import Web Playlists (48+ Tracks)</span>
+                        </button>
                       </div>
                     ) : (
                       <div className="playlists-list">
@@ -3033,18 +3075,20 @@ export default function App() {
                 <div className="quick-menu-section">
                   <span className="quick-menu-section-label">Preferences & Controls</span>
                   <div className="quick-menu-actions">
-                    <a
-                      href="./Dhun.apk"
-                      download="Dhun.apk"
-                      className="quick-menu-action-item quick-menu-apk-item"
-                      onClick={() => setShowQuickMenu(false)}
-                    >
-                      <div className="quick-menu-action-left">
-                        <Smartphone size={18} />
-                        <span>Download Android APK</span>
-                      </div>
-                      <span className="quick-menu-pill highlight">v1.0 APK</span>
-                    </a>
+                    {!isNativePlatform && (
+                      <a
+                        href="./Dhun.apk"
+                        download="Dhun.apk"
+                        className="quick-menu-action-item quick-menu-apk-item"
+                        onClick={() => setShowQuickMenu(false)}
+                      >
+                        <div className="quick-menu-action-left">
+                          <Smartphone size={18} />
+                          <span>Download Android APK</span>
+                        </div>
+                        <span className="quick-menu-pill highlight">v1.0 APK</span>
+                      </a>
+                    )}
                     <button
                       className="quick-menu-action-item"
                       onClick={() => { setShowQuickMenu(false); setShowImmersionModal(true) }}
