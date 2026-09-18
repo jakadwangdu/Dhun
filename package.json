@@ -15,6 +15,7 @@
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "lucide-react": "^1.20.0",
+    "motion-organic": "^1.0.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

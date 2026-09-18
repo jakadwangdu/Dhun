@@ -11,7 +11,7 @@
 :root {
   /* Editorial Typography */
   --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Emil Kowalski Animation Curves & Durations */
@@ -2359,58 +2359,67 @@ input, pre, textarea, select {
 .playlists-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   border-bottom: var(--border-hairline);
-  padding-bottom: 16px;
+  padding-bottom: 18px;
 }
 
 .playlists-title {
   font-family: var(--font-serif);
-  font-size: 32px;
-  font-weight: 500;
+  font-size: 34px;
+  font-weight: 400;
   color: var(--text-main);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
 }
 
 .playlists-subtitle {
+  display: block;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
+  margin-top: 4px;
 }
 
 .playlists-header-actions {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .import-playlists-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 15px;
-  min-height: 42px;
-  background: var(--bg-surface);
-  color: var(--text-main);
-  border: 1px solid var(--border-subtle);
+  gap: 7px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-pill);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
+.app-root:not(.dark) .import-playlists-btn {
+  background: #f4f3ee;
+  color: #18181b;
+  border: 1px solid #e4e4e7;
+}
+
 .import-playlists-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-medium);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
   transform: translateY(-1px);
 }
 
 .import-playlists-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.97);
 }
 
 .import-empty-playlists-btn {
@@ -2418,7 +2427,7 @@ input, pre, textarea, select {
   align-items: center;
   gap: 8px;
   margin-top: 14px;
-  padding: 11px 20px;
+  padding: 10px 20px;
   background: var(--text-main);
   color: var(--bg-surface);
   border-radius: var(--radius-pill);
@@ -2438,21 +2447,35 @@ input, pre, textarea, select {
 }
 
 .create-playlist-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  min-height: 42px;
-  background: var(--text-main);
-  color: var(--bg-surface);
+  gap: 7px;
+  padding: 7px 18px;
+  background: #ffffff;
+  color: #09090b;
+  border: none;
   border-radius: var(--radius-pill);
   font-size: 13px;
-  font-weight: 500;
-  transition: transform var(--duration-fast) var(--ease-out);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.app-root:not(.dark) .create-playlist-btn {
+  background: #121214;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.create-playlist-btn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
 }
 
 .create-playlist-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.97);
 }
 
 .create-playlist-form {
@@ -4795,4 +4818,208 @@ input, pre, textarea, select {
 .quick-menu-apk-item {
   text-decoration: none;
 }
+
+/* ==========================================================================
+   GESTURE NAVIGATION & TASTE-SKILL POLISH
+   ========================================================================== */
+
+/* Gesture Notification Floating Pill */
+.gesture-feedback-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: rgba(18, 18, 20, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  border-radius: 9999px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+  animation: gestureToastSlideIn 240ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.app-root:not(.dark) .gesture-feedback-toast {
+  background: rgba(255, 255, 255, 0.94);
+  color: #121214;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes gestureToastSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* Web & App Sync Hub Modal Styles */
+.sync-modal {
+  max-width: 520px;
+}
+
+.sync-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.sync-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--bg-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.sync-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.sync-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sync-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sync-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+}
+
+.sync-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.sync-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--text-main);
+  color: var(--bg-surface);
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.sync-primary-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.sync-btn-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.sync-outline-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.sync-outline-btn:hover {
+  background: var(--bg-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.sync-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.sync-code-input {
+  flex: 1;
+  padding: 9px 14px;
+  background: var(--bg-subtle);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.sync-code-input:focus {
+  border-color: var(--text-main);
+}
+
+.sync-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  background: var(--text-main);
+  color: var(--bg-surface);
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.sync-apply-btn:hover {
+  opacity: 0.92;
+}
+
+.sync-error-msg {
+  font-size: 11px;
+  color: #ef4444;
+  margin-top: 2px;
+}
+
 

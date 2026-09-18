@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc, Smartphone, Download, RefreshCw } from 'lucide-react'
+import { ChevronLeft, Sun, Moon, Search, SkipBack, Pause, Play, SkipForward, Music2, ArrowLeft, Mic2, ListMusic, Plus, Trash2, Check, House, Library, Play as PlayIcon, Heart, Maximize2, Minimize2, Repeat, Repeat1, ChevronUp, Clock, Sparkles, Coffee, Settings, X, Menu, Sliders, Volume2, Headphones, Disc, Smartphone, Download, RefreshCw, Upload, Share2 } from 'lucide-react'
 import { Capacitor } from '@capacitor/core'
+import { LiquidPageTransition } from 'motion-organic'
 import './App.css'
 import logoBlack from './logo_black.png'
 import qrCode from '../qr.png'
@@ -200,6 +201,14 @@ export default function App() {
   const [showQuickMenu, setShowQuickMenu] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [syncCodeInput, setSyncCodeInput] = useState('')
+  const [syncStatusMsg, setSyncStatusMsg] = useState(null)
+  const [gestureToast, setGestureToast] = useState(null)
+  const gestureToastTimeoutRef = useRef(null)
+  const touchStartRef = useRef({ x: 0, y: 0, time: 0 })
+  const dockTouchRef = useRef({ x: 0, y: 0, time: 0 })
+  const liquidTransitionRef = useRef(null)
   const [settingsApiKey, setSettingsApiKey] = useState('')
   const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('dhun_youtube_api_key') || '')
 
@@ -355,6 +364,21 @@ export default function App() {
       setIsDarkMode(true)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      try {
+        liquidTransitionRef.current = new LiquidPageTransition({
+          color: isDarkMode ? '#141417' : '#f4f3ee'
+        })
+      } catch (e) {
+        console.warn('motion-organic liquid transition init:', e)
+      }
+      return () => {
+        try { liquidTransitionRef.current?.destroy?.() } catch (e) {}
+      }
+    }
+  }, [isDarkMode])
 
   useEffect(() => {
     if (!window.YT) {
@@ -592,14 +616,20 @@ export default function App() {
     } catch (e) {}
   }
 
-  // Android & System Native Notification / Lockscreen Media Controls
+  // Android & System Native Notification / Lockscreen Media Controls & Background Service
   useEffect(() => {
+    if (isPlaying && currentTrack) {
+      startAudioKeeper(currentTrack)
+    } else if (!isPlaying) {
+      pauseAudioKeeper()
+    }
+
     if (typeof window !== 'undefined' && 'mediaSession' in navigator && currentTrack) {
       try {
         navigator.mediaSession.metadata = new window.MediaMetadata({
           title: currentTrack.title || 'Dhun Audio',
           artist: currentTrack.artist || 'Unknown Artist',
-          album: 'Dhun Music',
+          album: 'Dhun • High Fidelity',
           artwork: currentTrack.thumbnail ? [
             { src: currentTrack.thumbnail, sizes: '512x512', type: 'image/jpeg' },
             { src: currentTrack.thumbnail, sizes: '256x256', type: 'image/jpeg' }
@@ -717,9 +747,99 @@ export default function App() {
     setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')
   }
 
-  const navigateTo = (tab) => {
+  const showGestureFeedback = useCallback((text) => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(15) } catch (e) {}
+    }
+    setGestureToast(text)
+    if (gestureToastTimeoutRef.current) clearTimeout(gestureToastTimeoutRef.current)
+    gestureToastTimeoutRef.current = setTimeout(() => setGestureToast(null), 1500)
+  }, [])
+
+  const navigateTo = (tab, event = null) => {
     prevTabRef.current = activeTab
+    if (event && liquidTransitionRef.current && typeof liquidTransitionRef.current.trigger === 'function') {
+      liquidTransitionRef.current.onCovered = () => {
+        setActiveTab(tab)
+      }
+      try {
+        liquidTransitionRef.current.trigger(event)
+        return
+      } catch (e) {}
+    }
     setActiveTab(tab)
+  }
+
+  const handleMainTouchStart = (e) => {
+    if (!e.touches || e.touches.length !== 1) return
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now()
+    }
+  }
+
+  const handleMainTouchEnd = (e) => {
+    if (!touchStartRef.current || !e.changedTouches || e.changedTouches.length !== 1) return
+    const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x
+    const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y
+    const elapsed = Date.now() - touchStartRef.current.time
+
+    // Only respond to deliberate, quick horizontal swipes
+    if (elapsed < 500 && Math.abs(deltaX) > 65 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+      const tabs = ['welcome', 'explore', 'player', 'playlists']
+      const currentIndex = tabs.indexOf(activeTab)
+
+      if (deltaX < 0) {
+        // Swiped LEFT -> move forward
+        if (currentIndex !== -1 && currentIndex < tabs.length - 1) {
+          const nextTab = tabs[currentIndex + 1]
+          navigateTo(nextTab)
+          showGestureFeedback(`Swiped to ${nextTab === 'playlists' ? 'Collections' : nextTab === 'player' ? 'Listening Room' : nextTab.charAt(0).toUpperCase() + nextTab.slice(1)}`)
+        }
+      } else {
+        // Swiped RIGHT -> move back
+        if (activeTab === 'playlists' && selectedPlaylistId) {
+          setSelectedPlaylistId(null)
+          showGestureFeedback('Back to Collections')
+        } else if (currentIndex > 0) {
+          const prevTab = tabs[currentIndex - 1]
+          navigateTo(prevTab)
+          showGestureFeedback(`Swiped to ${prevTab === 'playlists' ? 'Collections' : prevTab === 'player' ? 'Listening Room' : prevTab.charAt(0).toUpperCase() + prevTab.slice(1)}`)
+        }
+      }
+    }
+  }
+
+  const handleDockTouchStart = (e) => {
+    if (!e.touches || e.touches.length !== 1) return
+    dockTouchRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now()
+    }
+  }
+
+  const handleDockTouchEnd = (e) => {
+    if (!dockTouchRef.current || !e.changedTouches || e.changedTouches.length !== 1) return
+    const deltaX = e.changedTouches[0].clientX - dockTouchRef.current.x
+    const deltaY = e.changedTouches[0].clientY - dockTouchRef.current.y
+    const elapsed = Date.now() - dockTouchRef.current.time
+
+    if (elapsed < 500) {
+      if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        if (deltaX < 0) {
+          handleNext()
+          showGestureFeedback('Next Track \u23ED')
+        } else {
+          handlePrev()
+          showGestureFeedback('Previous Track \u23EE')
+        }
+      } else if (deltaY < -50 && Math.abs(deltaY) > Math.abs(deltaX)) {
+        navigateTo('player')
+        showGestureFeedback('Expanded Player \u2303')
+      }
+    }
   }
 
   const handleHeaderBack = () => {
@@ -1008,12 +1128,93 @@ export default function App() {
 
   const importWebPlaylists = () => {
     setPlaylists(prev => {
-      const existingNames = new Set(prev.map(p => p.name))
-      const toAdd = DEFAULT_CURATED_PLAYLISTS.filter(p => !existingNames.has(p.name))
-      const updated = toAdd.length > 0 ? [...toAdd, ...prev] : DEFAULT_CURATED_PLAYLISTS
+      // Retain custom user-created playlists
+      const userCustom = prev.filter(p => !p.isCurated && !p.id.startsWith('curated-'))
+      // Update with fresh, verified curated playlists containing 48 accurate songs
+      const updated = [...DEFAULT_CURATED_PLAYLISTS, ...userCustom]
       try { localStorage.setItem('dhun_playlists', JSON.stringify(updated)) } catch (e) {}
       return updated
     })
+    showGestureFeedback('✓ Synced 6 Curated Web Playlists (48 Tracks)')
+  }
+
+  const generateSyncCode = () => {
+    try {
+      const payload = {
+        v: 1,
+        playlists,
+        liked: likedSongs,
+        recent: recentlyPlayed,
+        timestamp: Date.now()
+      }
+      const jsonStr = JSON.stringify(payload)
+      const encoded = btoa(encodeURIComponent(jsonStr))
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(encoded)
+        showGestureFeedback('✓ Sync Code Copied to Clipboard!')
+      }
+      return encoded
+    } catch (e) {
+      showGestureFeedback('Could not copy sync code')
+      return null
+    }
+  }
+
+  const exportBackupFile = () => {
+    try {
+      const payload = {
+        v: 1,
+        playlists,
+        liked: likedSongs,
+        recent: recentlyPlayed,
+        exportDate: new Date().toISOString()
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `dhun_playlists_backup_${Date.now()}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      showGestureFeedback('✓ Playlists Backup Downloaded')
+    } catch (e) {
+      console.warn('Export backup failed:', e)
+    }
+  }
+
+  const applySyncCode = (codeStr) => {
+    if (!codeStr || !codeStr.trim()) return
+    try {
+      let parsed = null
+      const trimmed = codeStr.trim()
+      if (trimmed.startsWith('{')) {
+        parsed = JSON.parse(trimmed)
+      } else {
+        const decoded = decodeURIComponent(atob(trimmed))
+        parsed = JSON.parse(decoded)
+      }
+
+      if (parsed && Array.isArray(parsed.playlists)) {
+        setPlaylists(parsed.playlists)
+        try { localStorage.setItem('dhun_playlists', JSON.stringify(parsed.playlists)) } catch (e) {}
+      }
+      if (parsed && Array.isArray(parsed.liked)) {
+        setLikedSongs(parsed.liked)
+        try { localStorage.setItem('dhun_liked', JSON.stringify(parsed.liked)) } catch (e) {}
+      }
+      if (parsed && Array.isArray(parsed.recent)) {
+        setRecentlyPlayed(parsed.recent)
+        try { localStorage.setItem('dhun_recent', JSON.stringify(parsed.recent)) } catch (e) {}
+      }
+      showGestureFeedback('✓ All Playlists & Liked Tracks Synced!')
+      setShowSyncModal(false)
+      setSyncCodeInput('')
+      setSyncStatusMsg(null)
+    } catch (e) {
+      setSyncStatusMsg('Invalid sync code or format. Please verify and try again.')
+    }
   }
 
   const addSongToPlaylist = (playlistId) => {
@@ -1746,7 +1947,16 @@ export default function App() {
             <span>GOOD {getTimeOfDay().toUpperCase()}</span>
           </div>
 
-          <main className="app-main">
+          <main
+            className="app-main"
+            onTouchStart={handleMainTouchStart}
+            onTouchEnd={handleMainTouchEnd}
+          >
+            {gestureToast && (
+              <div className="gesture-feedback-toast">
+                <span>{gestureToast}</span>
+              </div>
+            )}
             {errorMsg && <div className="error-toast">{errorMsg}</div>}
             {playerErrorState && <div className="error-toast player-error">{playerErrorState}</div>}
             {!isYtReady && playerErrorState && (
@@ -2628,7 +2838,11 @@ export default function App() {
 
           {/* Minimalist Editorial Audio Dock for Desktop & Tablet */}
           {currentTrack && activeTab !== 'player' && (
-            <div className="persistent-audio-dock">
+            <div
+              className="persistent-audio-dock"
+              onTouchStart={handleDockTouchStart}
+              onTouchEnd={handleDockTouchEnd}
+            >
               <div className="dock-track-info" onClick={() => navigateTo('player')}>
                 <img src={currentTrack.thumbnail} alt="" className="dock-thumb" onError={handleImgError} decoding="async" />
                 <div className="dock-text">
@@ -2699,7 +2913,12 @@ export default function App() {
 
           {/* Minimalist Mobile Mini-Player for Android */}
           {currentTrack && activeTab !== 'player' && (
-            <div className="mobile-mini-player" onClick={() => navigateTo('player')}>
+            <div
+              className="mobile-mini-player"
+              onClick={() => navigateTo('player')}
+              onTouchStart={handleDockTouchStart}
+              onTouchEnd={handleDockTouchEnd}
+            >
               <img src={currentTrack.thumbnail} alt="" className="mini-thumb" onError={handleImgError} decoding="async" />
               <div className="mini-info">
                 <p className="mini-title">{currentTrack.title}</p>
@@ -2836,6 +3055,82 @@ export default function App() {
                       Use Default
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Web & App Sync Hub Modal */}
+        {showSyncModal && (
+          <div className="coffee-modal-overlay" onClick={() => setShowSyncModal(false)}>
+            <div className="coffee-modal sync-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="immersion-modal-title-row">
+                  <RefreshCw size={18} className="immersion-title-icon" />
+                  <h3 className="coffee-modal-title">Web & App Sync Hub</h3>
+                </div>
+                <button className="coffee-modal-close" onClick={() => setShowSyncModal(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="coffee-modal-content sync-modal-content">
+                <p className="coffee-modal-subtitle">Keep your web playlists, liked songs, and history 100% accurate across Web and Android App.</p>
+
+                {/* Option 1: Live Curated Web Sync */}
+                <div className="sync-card">
+                  <div className="sync-card-header">
+                    <span className="sync-badge">Live Web Catalogue</span>
+                    <h4 className="sync-card-title">Curated Web Playlists</h4>
+                  </div>
+                  <p className="sync-card-desc">Load 6 verified categories (Bollywood Hits, Punjabi Waves, Global Top 50, Modern Bass, Lo-Fi Chill, Acoustic) with 48 accurate tracks.</p>
+                  <button onClick={() => { importWebPlaylists(); setShowSyncModal(false) }} className="sync-primary-btn">
+                    <RefreshCw size={14} />
+                    <span>Sync Curated Playlists (48 Tracks)</span>
+                  </button>
+                </div>
+
+                {/* Option 2: Export Web Playlists */}
+                <div className="sync-card">
+                  <div className="sync-card-header">
+                    <span className="sync-badge">Backup & Transfer</span>
+                    <h4 className="sync-card-title">Export My Playlists & Liked Songs</h4>
+                  </div>
+                  <p className="sync-card-desc">Export your custom playlists and favorites to a sync code or downloadable backup file.</p>
+                  <div className="sync-btn-group">
+                    <button onClick={generateSyncCode} className="sync-outline-btn">
+                      <Share2 size={14} />
+                      <span>Copy Sync Code</span>
+                    </button>
+                    <button onClick={exportBackupFile} className="sync-outline-btn">
+                      <Download size={14} />
+                      <span>Download File</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Option 3: Import Web Code */}
+                <div className="sync-card">
+                  <div className="sync-card-header">
+                    <span className="sync-badge">Restore into App</span>
+                    <h4 className="sync-card-title">Paste Web Sync Code / Data</h4>
+                  </div>
+                  <p className="sync-card-desc">Paste the sync code generated from your web browser to restore all playlists and songs 1:1.</p>
+                  <div className="sync-input-row">
+                    <input
+                      type="text"
+                      className="sync-code-input"
+                      placeholder="Paste sync code or JSON here..."
+                      value={syncCodeInput}
+                      onChange={(e) => { setSyncCodeInput(e.target.value); setSyncStatusMsg(null) }}
+                    />
+                    <button onClick={() => applySyncCode(syncCodeInput)} className="sync-apply-btn">
+                      <Upload size={14} />
+                      <span>Sync</span>
+                    </button>
+                  </div>
+                  {syncStatusMsg && <p className="sync-error-msg">{syncStatusMsg}</p>}
                 </div>
               </div>
             </div>

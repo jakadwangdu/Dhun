@@ -40,13 +40,28 @@ export function initBackgroundAudioShield() {
   }
 }
 
+import { Capacitor, registerPlugin } from '@capacitor/core'
+
+const NativeBackgroundAudio = typeof window !== 'undefined' && Capacitor.isNativePlatform()
+  ? registerPlugin('BackgroundAudio')
+  : null
+
 /**
- * Anchors Android OS Audio Focus using a minimal, silent looping audio element.
- * This signals to Android AudioManager that the app is actively playing media,
- * preventing the system from killing the WebView or dropping audio in background.
+ * Anchors Android OS Audio Focus and triggers Native Foreground Service + Partial WakeLock
+ * to ensure music never cuts out when the screen turns off / goes to sleep.
  */
-export function startAudioKeeper() {
+export function startAudioKeeper(track = null) {
   if (typeof document === 'undefined') return
+
+  // Trigger Native Android Foreground Service & Wakelock if running in APK
+  if (NativeBackgroundAudio) {
+    try {
+      NativeBackgroundAudio.startBackgroundPlayback({
+        title: track?.title || 'Dhun Audio',
+        artist: track?.artist || 'Dhun High Fidelity'
+      }).catch((e) => console.warn('Native background audio start err:', e))
+    } catch (e) {}
+  }
 
   try {
     if (!silentAudioEl) {
@@ -68,6 +83,13 @@ export function startAudioKeeper() {
 }
 
 export function pauseAudioKeeper() {
+  // Release native wakelock and remove ongoing notification
+  if (NativeBackgroundAudio) {
+    try {
+      NativeBackgroundAudio.stopBackgroundPlayback().catch(() => {})
+    } catch (e) {}
+  }
+
   if (silentAudioEl && !silentAudioEl.paused) {
     try {
       silentAudioEl.pause()
