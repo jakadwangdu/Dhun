@@ -1,15 +1,15 @@
 {
   "name": "Dhun Music",
   "short_name": "Dhun",
-  "description": "A quiet, distilled sanctuary for music discovery and contemplation.",
+  "description": "Music, in motion. High fidelity playback and offline listening.",
   "start_url": "/",
   "scope": "/",
   "id": "/",
-  "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
-  "orientation": "any",
-  "background_color": "#0c0c0e",
-  "theme_color": "#121214",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen"],
+  "orientation": "portrait-primary",
+  "background_color": "#101211",
+  "theme_color": "#101211",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -31,4 +31,3 @@
     }
   ]
 }
-
