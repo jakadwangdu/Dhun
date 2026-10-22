@@ -2,20 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body {
-  height: 100%;
-  background: #101211;
-  color: #F4F6F5;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-  overscroll-behavior: none;
-  margin: 0;
-  padding: 0;
-}
-
 *, *::before, *::after {
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f4f4f5;
+  color: #18181b;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+body.dark {
+  background: #0c0c0e;
+  color: #f4f4f5;
+}
+
+body.apk-mode {
+  background: #101211;
+  color: #F4F6F5;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* ApkApp Specific Glass & Motion Utilities */
 .noscroll {
   scrollbar-width: none;
 }
