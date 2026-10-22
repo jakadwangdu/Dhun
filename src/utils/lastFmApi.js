@@ -2,13 +2,39 @@
 // Supports track search, top charts, high-res album covers, and metadata enrichment.
 
 const LASTFM_API_BASE = 'https://ws.audioscrobbler.com/2.0/'
-const DEFAULT_LASTFM_KEY = import.meta.env.VITE_LASTFM_API_KEY || '264b638f382a5d2077983ea1c9444b0e' // Standard client key
+const DEFAULT_LASTFM_KEY = import.meta.env.VITE_LASTFM_API_KEY || '584544eefd54f619ba123ed47daabde0' // Official Dhun API key
+const DEFAULT_LASTFM_SECRET = import.meta.env.VITE_LASTFM_SHARED_SECRET || 'edd7492772e9a984b9b3ffb882098640'
+const DEFAULT_LASTFM_USER = import.meta.env.VITE_LASTFM_USER || 'micet97304'
 
 export const getLastFmKey = () => {
   try {
     return localStorage.getItem('dhun_lastfm_api_key') || DEFAULT_LASTFM_KEY
   } catch {
     return DEFAULT_LASTFM_KEY
+  }
+}
+
+export const getLastFmAccountInfo = () => {
+  const customKey = localStorage.getItem('dhun_lastfm_api_key')
+  return {
+    appName: 'Dhun',
+    apiKey: customKey || DEFAULT_LASTFM_KEY,
+    sharedSecret: DEFAULT_LASTFM_SECRET,
+    registeredUser: DEFAULT_LASTFM_USER,
+    isCustomKey: Boolean(customKey),
+    status: 'Active'
+  }
+}
+
+export async function verifyLastFmConnection() {
+  const key = getLastFmKey()
+  try {
+    const res = await fetch(`${LASTFM_API_BASE}?method=chart.gettoptracks&api_key=${key}&format=json&limit=1`, {
+      headers: { 'User-Agent': 'DhunMusic/2.0 (music.lancebuddy.in)' }
+    })
+    return res.ok
+  } catch {
+    return false
   }
 }
 

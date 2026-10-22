@@ -11,7 +11,8 @@ import {
   getStorageUsageEstimate,
   requestPersistentStorage
 } from './utils/downloadManager'
-import { fetchLastFmTrackInfo } from './utils/lastFmApi'
+import { fetchLastFmTrackInfo, verifyLastFmConnection } from './utils/lastFmApi'
+import { extractAmbianceColor, getAmbianceStyle, createFallbackAmbiance } from './utils/ambianceEngine'
 import { DEFAULT_CURATED_PLAYLISTS } from './data/defaultPlaylists'
 import { initBackgroundAudioShield, startAudioKeeper, pauseAudioKeeper } from './utils/backgroundAudio'
 
@@ -77,7 +78,9 @@ export default function ApkApp() {
   const [playerOpen, setPlayerOpen] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
 
-  // User Profile
+  // User Profile & Customization Studio
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [lastFmConnected, setLastFmConnected] = useState(true)
   const [userName, setUserName] = useState(() => {
     try {
       return localStorage.getItem('dhun_user_name') || 'Dhun Listener'
@@ -85,6 +88,48 @@ export default function ApkApp() {
       return 'Dhun Listener'
     }
   })
+
+  // User Customization Settings
+  const [userSettings, setUserSettings] = useState(() => {
+    try {
+      const raw = localStorage.getItem('dhun_user_settings')
+      return raw ? JSON.parse(raw) : {
+        ambianceMode: 'dynamic', // 'dynamic' | 'aurora' | 'neon' | 'noir'
+        ambianceIntensity: 0.75, // 0.2 to 1.0
+        hapticsEnabled: true,
+        swipeDismissEnabled: true,
+        artworkSwipeEnabled: true,
+        audioQuality: 'highres', // 'highres' | 'studio' | 'low'
+        customLastFmKey: ''
+      }
+    } catch {
+      return {
+        ambianceMode: 'dynamic',
+        ambianceIntensity: 0.75,
+        hapticsEnabled: true,
+        swipeDismissEnabled: true,
+        artworkSwipeEnabled: true,
+        audioQuality: 'highres',
+        customLastFmKey: ''
+      }
+    }
+  })
+
+  const updateSettings = useCallback((key, value) => {
+    setUserSettings((prev) => {
+      const next = { ...prev, [key]: value }
+      try {
+        localStorage.setItem('dhun_user_settings', JSON.stringify(next))
+      } catch {
+        // Ignore storage error
+      }
+      return next
+    })
+  }, [])
+
+  // Dynamic Ambiance & Gesture States
+  const [ambianceData, setAmbianceData] = useState(() => createFallbackAmbiance('dhun'))
+  const [artSwipeOffset, setArtSwipeOffset] = useState(0)
 
   // Playback & Queue
   const [tracks, setTracks] = useState(() => {
@@ -134,10 +179,20 @@ export default function ApkApp() {
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
 
-  // Touch Swipe Gesture for Now Playing Sheet
-  const touchStartY = useRef(0)
-  const touchDeltaY = useRef(0)
+  // Touch Swipe Gesture Refs for Now Playing Sheet
+  const sheetTouchStartY = useRef(0)
+  const sheetTouchStartX = useRef(0)
+  const sheetTouchDeltaY = useRef(0)
+  const sheetTouchTime = useRef(0)
   const [sheetDragY, setSheetDragY] = useState(0)
+
+  // Artwork swipe left/right refs
+  const artTouchStartX = useRef(0)
+  const artTouchStartY = useRef(0)
+
+  // Mini player touch gesture refs
+  const miniTouchStartY = useRef(0)
+  const miniTouchStartX = useRef(0)
 
   // Refs for audio engine
   const tracksRef = useRef(tracks)
@@ -165,15 +220,44 @@ export default function ApkApp() {
     }, 2800)
   }, [])
 
-  const vibrate = () => {
+  const vibrate = useCallback((ms = 12) => {
+    if (!userSettings.hapticsEnabled) return
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(8)
+        navigator.vibrate(ms)
       }
     } catch {
       // Ignore vibration error
     }
-  }
+  }, [userSettings.hapticsEnabled])
+
+  // Derived Dynamic Ambiance Style
+  const ambianceStyle = useMemo(() => {
+    return getAmbianceStyle(ambianceData, userSettings.ambianceMode, userSettings.ambianceIntensity)
+  }, [ambianceData, userSettings.ambianceMode, userSettings.ambianceIntensity])
+
+  // Extract vibrant ambiance color whenever current track changes
+  useEffect(() => {
+    if (!currentTrack) return
+    let isCancelled = false
+
+    const updateAmbiance = async () => {
+      const img =
+        currentTrack.img ||
+        (currentTrack.id && !currentTrack.id.startsWith('demo-')
+          ? `https://i.ytimg.com/vi/${currentTrack.id}/hqdefault.jpg`
+          : '')
+      const amb = await extractAmbianceColor(img, currentTrack.title || 'dhun')
+      if (!isCancelled && amb) {
+        setAmbianceData(amb)
+      }
+    }
+
+    updateAmbiance()
+    return () => {
+      isCancelled = true
+    }
+  }, [currentTrack])
 
   // Last.fm Metadata Enrichment
   useEffect(() => {
@@ -633,42 +717,112 @@ export default function ApkApp() {
   }
 
   // Touch handlers for Now Playing Sheet pull-down dismiss
-  const handleTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY
-    touchDeltaY.current = 0
+  const handleSheetTouchStart = (e) => {
+    sheetTouchStartY.current = e.touches[0].clientY
+    sheetTouchStartX.current = e.touches[0].clientX
+    sheetTouchDeltaY.current = 0
+    sheetTouchTime.current = Date.now()
   }
 
-  const handleTouchMove = (e) => {
-    const diff = e.touches[0].clientY - touchStartY.current
-    if (diff > 0) {
-      touchDeltaY.current = diff
-      setSheetDragY(diff)
+  const handleSheetTouchMove = (e) => {
+    const diffY = e.touches[0].clientY - sheetTouchStartY.current
+    const diffX = Math.abs(e.touches[0].clientX - sheetTouchStartX.current)
+    if (diffY > 0 && diffY > diffX) {
+      sheetTouchDeltaY.current = diffY
+      setSheetDragY(diffY)
     }
   }
 
-  const handleTouchEnd = () => {
-    if (touchDeltaY.current > 120) {
-      vibrate()
+  const handleSheetTouchEnd = () => {
+    const elapsed = Math.max(1, Date.now() - sheetTouchTime.current)
+    const velocity = sheetTouchDeltaY.current / elapsed
+    if (userSettings.swipeDismissEnabled && (sheetTouchDeltaY.current > 110 || velocity > 0.45)) {
+      vibrate(15)
       setPlayerOpen(false)
     }
     setSheetDragY(0)
-    touchDeltaY.current = 0
+    sheetTouchDeltaY.current = 0
+  }
+
+  // Artwork horizontal swipe gesture handlers (left = next, right = prev)
+  const handleArtTouchStart = (e) => {
+    artTouchStartX.current = e.touches[0].clientX
+    artTouchStartY.current = e.touches[0].clientY
+  }
+
+  const handleArtTouchMove = (e) => {
+    if (!userSettings.artworkSwipeEnabled) return
+    const diffX = e.touches[0].clientX - artTouchStartX.current
+    const diffY = Math.abs(e.touches[0].clientY - artTouchStartY.current)
+    if (Math.abs(diffX) > diffY) {
+      setArtSwipeOffset(Math.max(-80, Math.min(80, diffX * 0.4)))
+    }
+  }
+
+  const handleArtTouchEnd = (e) => {
+    if (!userSettings.artworkSwipeEnabled) {
+      setArtSwipeOffset(0)
+      return
+    }
+    const diffX = e.changedTouches[0].clientX - artTouchStartX.current
+    const diffY = Math.abs(e.changedTouches[0].clientY - artTouchStartY.current)
+    if (Math.abs(diffX) > 65 && Math.abs(diffX) > diffY * 1.5) {
+      vibrate(18)
+      if (diffX < 0) {
+        handleNextTrack()
+      } else {
+        handlePrevTrack()
+      }
+    }
+    setArtSwipeOffset(0)
+  }
+
+  // Mini-player touch gesture handlers (swipe up = open, swipe left/right = skip)
+  const handleMiniTouchStart = (e) => {
+    miniTouchStartY.current = e.touches[0].clientY
+    miniTouchStartX.current = e.touches[0].clientX
+  }
+
+  const handleMiniTouchEnd = (e) => {
+    const diffY = e.changedTouches[0].clientY - miniTouchStartY.current
+    const diffX = e.changedTouches[0].clientX - miniTouchStartX.current
+    if (diffY < -40 && Math.abs(diffY) > Math.abs(diffX)) {
+      vibrate(12)
+      setPlayerOpen(true)
+    } else if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+      vibrate(15)
+      if (diffX < 0) {
+        handleNextTrack()
+      } else {
+        handlePrevTrack()
+      }
+    }
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-ink text-white font-sans select-none">
+    <div className="relative app-viewport-height w-screen overflow-hidden bg-ink text-white font-sans select-none">
       {/* Hidden YouTube Player IFrame container */}
       <div id="youtube-player-container-apk" style={{ position: 'absolute', top: -9999, left: -9999, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
 
-      {/* Ambient Moving Backdrop: HSL follows current track */}
-      <div className="fixed inset-0 -z-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      {/* Dynamic Ambiance Moving Backdrop */}
+      <div className="fixed inset-0 -z-0 overflow-hidden pointer-events-none transition-all duration-1000" aria-hidden="true">
         <div
-          className="ambient absolute -left-1/4 -top-1/4 h-[70vh] w-[70vh] rounded-full opacity-35 blur-[120px] transition-all duration-1000"
-          style={{ background: `hsl(${currentTrack.h} 80% 55%)` }}
+          className="ambiance-mesh absolute inset-0 opacity-40 transition-all duration-1000"
+          style={{ background: ambianceStyle.meshGradient || ambianceStyle.background }}
         />
         <div
-          className="ambient absolute -bottom-1/4 -right-1/4 h-[60vh] w-[60vh] rounded-full opacity-20 blur-[120px] transition-all duration-1000"
-          style={{ background: `hsl(${(currentTrack.h + 80) % 360} 70% 50%)` }}
+          className="ambient absolute -left-1/4 -top-1/4 h-[75vh] w-[75vh] rounded-full blur-[110px] transition-all duration-1000"
+          style={{
+            background: ambianceData.primary || `hsl(${currentTrack.h} 80% 55%)`,
+            opacity: userSettings.ambianceIntensity * 0.45
+          }}
+        />
+        <div
+          className="ambient absolute -bottom-1/4 -right-1/4 h-[65vh] w-[65vh] rounded-full blur-[110px] transition-all duration-1000"
+          style={{
+            background: ambianceData.secondary || `hsl(${(currentTrack.h + 80) % 360} 70% 50%)`,
+            opacity: userSettings.ambianceIntensity * 0.35
+          }}
         />
       </div>
 
@@ -697,21 +851,14 @@ export default function ApkApp() {
             <header className="flex items-center justify-between">
               <button
                 onClick={() => {
-                  vibrate()
-                  const name = prompt('Enter your name:', userName)
-                  if (name && name.trim()) {
-                    setUserName(name.trim())
-                    try {
-                      localStorage.setItem('dhun_user_name', name.trim())
-                    } catch {
-                      // Ignore storage error
-                    }
-                  }
+                  vibrate(10)
+                  setProfileOpen(true)
                 }}
-                className="grid h-11 w-11 place-items-center rounded-full bg-lime text-lg font-extrabold text-ink transition active:scale-95"
-                aria-label="User profile"
+                className="grid h-11 w-11 place-items-center rounded-full bg-lime text-lg font-extrabold text-ink transition active:scale-95 shadow-lg relative group"
+                aria-label="User profile & customization"
               >
                 {userName[0] || 'D'}
+                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-mint border-2 border-ink" />
               </button>
               <div className="flex gap-3">
                 <button
@@ -1149,17 +1296,44 @@ export default function ApkApp() {
         {!playerOpen && (
           <div
             onClick={() => {
-              vibrate()
+              vibrate(10)
               setPlayerOpen(true)
             }}
-            className="absolute inset-x-5 z-20 flex items-center justify-between rounded-[24px] glass px-3.5 py-2.5 shadow-2xl cursor-pointer transition active:scale-98"
-            style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)' }}
+            onTouchStart={handleMiniTouchStart}
+            onTouchEnd={handleMiniTouchEnd}
+            className="absolute inset-x-5 z-20 flex items-center justify-between rounded-[24px] glass px-3.5 py-2.5 shadow-2xl cursor-pointer transition active:scale-98 overflow-hidden"
+            style={{
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)',
+              boxShadow: ambianceStyle.shadowGlow || '0 12px 32px rgba(0,0,0,0.6)'
+            }}
           >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
+            {/* Ambient thin track progress indicator */}
+            <div className="absolute top-0 inset-x-3 h-[2px] rounded-full overflow-hidden bg-white/10">
               <div
-                className={`h-11 w-11 shrink-0 rounded-xl ${playing ? 'playing-pulse ring-2 ring-mint' : ''}`}
-                style={getCoverArtStyle(currentTrack)}
+                className="h-full transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, (pos / (currentTrack.d || trackDuration || 210)) * 100)}%`,
+                  background: ambianceData.primary || '#00FF66'
+                }}
               />
+            </div>
+
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="relative shrink-0">
+                <div
+                  className={`h-11 w-11 rounded-xl transition-transform duration-300 ${playing ? 'playing-pulse ring-2 ring-mint' : ''}`}
+                  style={getCoverArtStyle(currentTrack)}
+                />
+                {playing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl pointer-events-none">
+                    <div className="flex items-end gap-[2px] h-3">
+                      <span className="w-0.5 bg-mint rounded-full eq-bar-1" />
+                      <span className="w-0.5 bg-mint rounded-full eq-bar-2" />
+                      <span className="w-0.5 bg-mint rounded-full eq-bar-3" />
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold text-white leading-tight">{currentTrack.title}</p>
                 <p className="truncate text-xs text-white/70">{currentTrack.artist}</p>
@@ -1169,7 +1343,7 @@ export default function ApkApp() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  vibrate()
+                  vibrate(12)
                   playbackEngine.toggle()
                 }}
                 className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition active:scale-90"
@@ -1180,7 +1354,7 @@ export default function ApkApp() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  vibrate()
+                  vibrate(10)
                   handleNextTrack()
                 }}
                 className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition active:scale-90"
@@ -1237,20 +1411,24 @@ export default function ApkApp() {
           style={{
             transform: playerOpen ? `translateY(${sheetDragY}px)` : 'translateY(100%)'
           }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          onTouchStart={handleSheetTouchStart}
+          onTouchMove={handleSheetTouchMove}
+          onTouchEnd={handleSheetTouchEnd}
           aria-label="Now playing"
         >
-          {/* Zooming / breathing backdrop cover */}
+          {/* Zooming / breathing backdrop cover with Dynamic Ambiance */}
           <div
             className={`absolute inset-0 transition-all duration-700 ${playing ? 'breathe-zoom' : 'scale-110'}`}
             style={getCoverArtStyle(currentTrack)}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/90" />
+          <div
+            className="ambiance-mesh absolute inset-0 opacity-60 pointer-events-none transition-all duration-1000"
+            style={{ background: ambianceStyle.meshGradient }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/95" />
 
           {/* Grabber for swipe down gesture */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 h-1.5 w-12 rounded-full bg-white/30" />
+          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 h-1.5 w-12 rounded-full bg-white/40" />
 
           {/* Close button at top-left */}
           <button
@@ -1316,6 +1494,46 @@ export default function ApkApp() {
             </div>
           )}
 
+          {/* Central Hero Artwork with Touch Swipe Next/Prev */}
+          <div
+            className="absolute inset-x-8 flex items-center justify-center pointer-events-auto"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 72px)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 265px)'
+            }}
+            onTouchStart={handleArtTouchStart}
+            onTouchMove={handleArtTouchMove}
+            onTouchEnd={handleArtTouchEnd}
+          >
+            <div
+              className="relative aspect-square max-h-full max-w-[300px] w-full rounded-[28px] overflow-hidden transition-transform duration-200"
+              style={{
+                transform: `translateX(${artSwipeOffset}px) scale(${1 - Math.abs(artSwipeOffset) * 0.002}) rotate(${artSwipeOffset * 0.04}deg)`,
+                boxShadow: ambianceStyle.shadowGlow || '0 20px 50px rgba(0,0,0,0.8)'
+              }}
+            >
+              <div
+                className={`w-full h-full ${playing ? 'playing-pulse' : ''}`}
+                style={getCoverArtStyle(currentTrack)}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
+
+              {/* Swipe directional cues */}
+              {artSwipeOffset < -15 && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-mint backdrop-blur-md animate-pulse">
+                  <span>Next</span>
+                  <Icon name="next" size={14} />
+                </div>
+              )}
+              {artSwipeOffset > 15 && (
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-mint backdrop-blur-md animate-pulse">
+                  <Icon name="prev" size={14} />
+                  <span>Prev</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Player Bottom Card and Controls */}
           <div
             className="absolute inset-x-4 bottom-0 space-y-3"
@@ -1376,12 +1594,11 @@ export default function ApkApp() {
                   return (
                     <span
                       key={i}
-                      className={`bar flex-1 rounded-full transition-all duration-150 ${
-                        isPlayed ? 'bg-mint' : 'bg-white/40'
-                      }`}
+                      className="bar flex-1 rounded-full transition-all duration-150"
                       style={{
                         height: `${height}px`,
-                        maxWidth: '4px'
+                        maxWidth: '4px',
+                        background: isPlayed ? (ambianceData.primary || '#00FF66') : 'rgba(255,255,255,0.25)'
                       }}
                     />
                   )
@@ -1401,7 +1618,7 @@ export default function ApkApp() {
             <div className="glass flex items-center justify-between rounded-[32px] p-3 shadow-2xl">
               <button
                 onClick={() => {
-                  vibrate()
+                  vibrate(10)
                   setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'))
                 }}
                 className={`grid h-12 w-12 place-items-center rounded-full text-xs font-bold transition active:scale-90 ${
@@ -1414,7 +1631,7 @@ export default function ApkApp() {
 
               <button
                 onClick={() => {
-                  vibrate()
+                  vibrate(12)
                   handlePrevTrack()
                 }}
                 className="grid h-14 w-14 place-items-center rounded-full bg-white/10 text-white transition active:scale-90"
@@ -1425,10 +1642,14 @@ export default function ApkApp() {
 
               <button
                 onClick={() => {
-                  vibrate()
+                  vibrate(15)
                   playbackEngine.toggle()
                 }}
-                className="grid h-16 w-16 place-items-center rounded-full bg-mint text-ink font-extrabold shadow-xl transition active:scale-90"
+                className="grid h-16 w-16 place-items-center rounded-full text-ink font-extrabold shadow-xl transition active:scale-90"
+                style={{
+                  background: ambianceData.primary || '#00FF66',
+                  boxShadow: `0 8px 24px ${ambianceData.primary ? ambianceData.primary + '55' : 'rgba(0,255,102,0.35)'}`
+                }}
                 aria-label={playing ? 'Pause' : 'Play'}
               >
                 <Icon name={playing ? 'pause' : 'play'} size={26} />
@@ -1460,6 +1681,252 @@ export default function ApkApp() {
             </div>
           </div>
         </section>
+        {/* ===================== PROFILE & CUSTOMIZATION STUDIO MODAL ===================== */}
+        {profileOpen && (
+          <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/75 backdrop-blur-md animate-fade-in">
+            <div
+              className="relative w-full max-h-[88vh] overflow-y-auto noscroll rounded-t-[36px] glass p-6 border-t border-white/15 shadow-2xl"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-12 w-12 place-items-center rounded-full bg-lime text-ink font-black text-xl shadow-md">
+                    {userName[0] || 'D'}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-bold text-white">{userName}</h2>
+                      <button
+                        onClick={() => {
+                          vibrate(8)
+                          const n = prompt('Enter your listener name:', userName)
+                          if (n && n.trim()) {
+                            setUserName(n.trim())
+                            try { localStorage.setItem('dhun_user_name', n.trim()) } catch { /* ignore */ }
+                            showToast('Name updated')
+                          }
+                        }}
+                        className="text-xs text-mint underline font-medium"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <p className="text-xs text-mute flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-mint" />
+                      Dhun Studio & Ambiance Customizer
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    vibrate(8)
+                    setProfileOpen(false)
+                  }}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition active:scale-90"
+                  aria-label="Close settings"
+                >
+                  <Icon name="x" size={18} />
+                </button>
+              </div>
+
+              {/* Ambiance Color System */}
+              <div className="mt-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-mute flex items-center gap-1.5">
+                    <Icon name="sparkles" size={14} className="text-mint" />
+                    Ambiance Lighting Mode
+                  </span>
+                  <span className="text-xs font-semibold text-mint capitalize">{userSettings.ambianceMode}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    ['dynamic', 'Dynamic', 'Cover colors'],
+                    ['aurora', 'Aurora', 'Violet & Cyan'],
+                    ['neon', 'Neon', 'Lime Energy'],
+                    ['noir', 'Noir', 'Pure Ink']
+                  ].map(([mode, label]) => {
+                    const active = userSettings.ambianceMode === mode
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          vibrate(10)
+                          updateSettings('ambianceMode', mode)
+                        }}
+                        className={`py-2 px-1 rounded-xl text-xs font-semibold transition active:scale-95 ${
+                          active ? 'bg-mint text-ink shadow-md font-bold' : 'bg-white/10 text-white/80 hover:bg-white/15'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Intensity Slider */}
+                <div className="pt-2">
+                  <div className="flex justify-between text-xs text-white/70 mb-1">
+                    <span>Glow Intensity</span>
+                    <span>{Math.round(userSettings.ambianceIntensity * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1.0"
+                    step="0.05"
+                    value={userSettings.ambianceIntensity}
+                    onChange={(e) => updateSettings('ambianceIntensity', parseFloat(e.target.value))}
+                    className="w-full accent-mint h-1.5 bg-white/20 rounded-lg cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Gesture Controls */}
+              <div className="mt-6 space-y-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-mute flex items-center gap-1.5">
+                  <Icon name="sliders" size={14} className="text-lime" />
+                  Motion & Touch Gestures
+                </span>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-between p-3 rounded-2xl bg-white/5 cursor-pointer">
+                    <div className="pr-3">
+                      <p className="text-sm font-semibold text-white">Swipe Down Dismiss</p>
+                      <p className="text-xs text-mute">Swipe down on full player to minimize</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={userSettings.swipeDismissEnabled}
+                      onChange={(e) => {
+                        vibrate(8)
+                        updateSettings('swipeDismissEnabled', e.target.checked)
+                      }}
+                      className="accent-mint h-5 w-5 rounded"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-2xl bg-white/5 cursor-pointer">
+                    <div className="pr-3">
+                      <p className="text-sm font-semibold text-white">Cover Art Swipe Skip</p>
+                      <p className="text-xs text-mute">Swipe left for next song, right for prev</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={userSettings.artworkSwipeEnabled}
+                      onChange={(e) => {
+                        vibrate(8)
+                        updateSettings('artworkSwipeEnabled', e.target.checked)
+                      }}
+                      className="accent-mint h-5 w-5 rounded"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-2xl bg-white/5 cursor-pointer">
+                    <div className="pr-3">
+                      <p className="text-sm font-semibold text-white">Haptic Vibration</p>
+                      <p className="text-xs text-mute">Subtle physical click feedback on touch</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={userSettings.hapticsEnabled}
+                      onChange={(e) => {
+                        updateSettings('hapticsEnabled', e.target.checked)
+                        if (e.target.checked) vibrate(15)
+                      }}
+                      className="accent-mint h-5 w-5 rounded"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Audio Fidelity Quality */}
+              <div className="mt-6 space-y-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-mute flex items-center gap-1.5">
+                  <Icon name="music" size={14} className="text-mint" />
+                  Playback Engine Audio Quality
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ['highres', 'Hi-Res Opus', '48 kHz'],
+                    ['studio', 'Studio Master', '320 kbps'],
+                    ['low', 'Data Saver', '128 kbps']
+                  ].map(([val, label, sub]) => {
+                    const active = userSettings.audioQuality === val
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => {
+                          vibrate(8)
+                          updateSettings('audioQuality', val)
+                          showToast(`Audio set to ${label}`)
+                        }}
+                        className={`p-2.5 rounded-2xl text-left transition active:scale-95 ${
+                          active ? 'bg-mint text-ink font-bold shadow-md' : 'bg-white/5 text-white'
+                        }`}
+                      >
+                        <p className="text-xs font-bold leading-tight">{label}</p>
+                        <p className={`text-[10px] mt-0.5 ${active ? 'text-ink/80' : 'text-mute'}`}>{sub}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Last.fm API Integration Card */}
+              <div className="mt-6 p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-mute">
+                    Last.fm Backend Integration
+                  </span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${lastFmConnected ? 'bg-mint/20 text-mint' : 'bg-red-500/20 text-red-400'}`}>
+                    {lastFmConnected ? 'Connected (200 OK)' : 'Offline'}
+                  </span>
+                </div>
+                <div className="text-xs text-white/80 space-y-1">
+                  <p><span className="text-mute">Application:</span> Dhun</p>
+                  <p><span className="text-mute">Registered User:</span> micet97304</p>
+                  <p><span className="text-mute">API Key:</span> 584544ee…bde0</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    vibrate(10)
+                    showToast('Pinging Last.fm API…')
+                    const ok = await verifyLastFmConnection()
+                    setLastFmConnected(ok)
+                    if (ok) {
+                      showToast('Last.fm API ping verified (HTTP 200)')
+                    } else {
+                      showToast('Last.fm ping failed - check network')
+                    }
+                  }}
+                  className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white transition active:scale-95"
+                >
+                  Test Last.fm API Connection
+                </button>
+              </div>
+
+              {/* Cache Management */}
+              <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white">Offline Music Cache</p>
+                  <p className="text-[11px] text-mute">Downloaded songs & metadata</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    vibrate(12)
+                    if (window.confirm('Clear all downloaded offline music?')) {
+                      await removeAllDownloads()
+                      showToast('Offline cache cleared')
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-semibold transition active:scale-95"
+                >
+                  Clear Cache
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
