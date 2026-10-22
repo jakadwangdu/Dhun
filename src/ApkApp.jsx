@@ -11,12 +11,38 @@ import {
   getStorageUsageEstimate,
   requestPersistentStorage
 } from './utils/downloadManager'
-import { fetchLastFmTrackInfo, verifyLastFmConnection } from './utils/lastFmApi'
+import { fetchLastFmTrackInfo, verifyLastFmConnection, searchLastFmTracks } from './utils/lastFmApi'
 import { extractAmbianceColor, getAmbianceStyle, createFallbackAmbiance } from './utils/ambianceEngine'
 import { DEFAULT_CURATED_PLAYLISTS } from './data/defaultPlaylists'
 import { initBackgroundAudioShield, startAudioKeeper, pauseAudioKeeper } from './utils/backgroundAudio'
 
 initBackgroundAudioShield()
+
+const DEFAULT_YOUTUBE_API_KEY =
+  import.meta.env.VITE_YOUTUBE_API_KEY ||
+  import.meta.env.YOUTUBE_API_KEY ||
+  'AIzaSyAqEPfSJl94sJgYWPlWYx-ia8wpZ3PgNOY'
+const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3'
+
+function getYoutubeApiKey() {
+  try {
+    const custom = localStorage.getItem('dhun_youtube_api_key')
+    return custom && custom.trim() ? custom.trim() : DEFAULT_YOUTUBE_API_KEY
+  } catch {
+    return DEFAULT_YOUTUBE_API_KEY
+  }
+}
+
+function decodeHtml(html) {
+  if (!html) return ''
+  return html
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+}
 
 // Initial Curated Fallback Tracks
 const DEMO_SEED = [
@@ -40,10 +66,18 @@ function norm(x, i = 0) {
   const year = x.year || '2025'
   const songs = x.songs || 1
   const d = Math.round(x.duration || x.d || 210)
-  const img = x.thumbnail || x.thumb || x.image || (x.id && !x.id.startsWith('demo-') ? `https://i.ytimg.com/vi/${x.id}/hqdefault.jpg` : '')
+  const img =
+    x.thumbnail ||
+    x.thumb ||
+    x.image ||
+    x.img ||
+    (x.id && !x.id.startsWith('demo-') && !x.id.startsWith('lastfm-') && !x.id.startsWith('yt-')
+      ? `https://i.ytimg.com/vi/${x.id}/hqdefault.jpg`
+      : '')
   const src = x.url || x.stream || x.src || ''
   const h = (i * 47 + 20) % 360
-  return { id, title, artist, album, year, songs, d, img, src, h }
+  const searchQuery = x.searchQuery || ''
+  return { id, title, artist, album, year, songs, d, img, src, h, searchQuery }
 }
 
 function enforceHighestQuality(player) {
@@ -407,6 +441,11 @@ export default function ApkApp() {
               } else if (event.data === window.YT.PlayerState.ENDED) {
                 handleNextTrack()
               }
+            },
+            onError: (event) => {
+              console.warn('YouTube Player Error:', event.data)
+              showToast('Track restricted or unavailable, playing next…')
+              setTimeout(() => handleNextTrack(), 500)
             }
           }
         })
@@ -455,45 +494,83 @@ export default function ApkApp() {
 
   // Play a track by index or track object
   const playTrackAt = useCallback(
-    (target) => {
-      vibrate()
-      let index = -1
+    async (target) => {
+      vibrate(10)
+      let currentTrackList = tracksRef.current || tracks
+      let targetTrack = null
+      let targetIndex = -1
+
       if (typeof target === 'number') {
-        index = target
-      } else if (typeof target === 'string') {
-        index = tracks.findIndex((t) => t.id === target)
-        if (index === -1) {
-          const foundInResults = results.find((r) => r.id === target)
-          if (foundInResults) {
-            setTracks((prev) => [...prev, foundInResults])
-            index = tracks.length
+        targetIndex = target
+        targetTrack = currentTrackList[target]
+      } else {
+        const id = typeof target === 'string' ? target : target?.id
+        const existingIdx = currentTrackList.findIndex((t) => t.id === id)
+        if (existingIdx !== -1) {
+          targetIndex = existingIdx
+          targetTrack = currentTrackList[existingIdx]
+        } else {
+          let candidate =
+            typeof target === 'object' && target?.id
+              ? target
+              : results.find((r) => r.id === id)
+
+          if (candidate) {
+            targetTrack = candidate
+
+            // If this track has a synthetic ID and needs YouTube videoId resolution
+            if (targetTrack.id.startsWith('lastfm-') || targetTrack.id.startsWith('yt-search-')) {
+              const queryToResolve = targetTrack.searchQuery || `${targetTrack.title} ${targetTrack.artist}`
+              try {
+                showToast('Resolving audio stream…')
+                const key = getYoutubeApiKey()
+                const base = import.meta.env.DEV ? '/api/youtube' : YOUTUBE_API_BASE
+                const r = await fetch(
+                  `${base}/search?part=snippet&maxResults=1&q=${encodeURIComponent(queryToResolve)}&type=video&key=${encodeURIComponent(key)}`,
+                  { headers: { 'X-Goog-Api-Key': key } }
+                )
+                if (r.ok) {
+                  const d = await r.json()
+                  if (d.items?.[0]?.id?.videoId) {
+                    targetTrack = {
+                      ...targetTrack,
+                      id: d.items[0].id.videoId
+                    }
+                  }
+                }
+              } catch {
+                // Keep original
+              }
+            }
+
+            const updatedTracks = [...currentTrackList, targetTrack]
+            targetIndex = updatedTracks.length - 1
+            setTracks(updatedTracks)
+            tracksRef.current = updatedTracks
           }
-        }
-      } else if (target && target.id) {
-        index = tracks.findIndex((t) => t.id === target.id)
-        if (index === -1) {
-          setTracks((prev) => [...prev, target])
-          index = tracks.length
         }
       }
 
-      if (index >= 0 && index < tracks.length) {
-        setCur(index)
-        const t = tracks[index]
-        playbackEngine.playTrack(t)
+      if (targetTrack && targetIndex >= 0) {
+        setCur(targetIndex)
+        curRef.current = targetIndex
+        playbackEngine.playTrack(targetTrack)
         setPlaying(true)
         setPlayerOpen(true)
       }
     },
-    [tracks, results]
+    [tracks, results, vibrate, showToast]
   )
 
   const quickToggle = useCallback(
     (trackId) => {
-      vibrate()
+      vibrate(8)
       const index = tracks.findIndex((t) => t.id === trackId)
       if (index === -1) {
-        playTrackAt(trackId)
+        const found = results.find((r) => r.id === trackId)
+        if (found) {
+          playTrackAt(found)
+        }
         return
       }
 
@@ -505,7 +582,7 @@ export default function ApkApp() {
         setPlaying(true)
       }
     },
-    [cur, tracks, playTrackAt]
+    [cur, tracks, results, playTrackAt, vibrate]
   )
 
   // Like Toggle
@@ -641,10 +718,10 @@ export default function ApkApp() {
     return tracks
   }, [chipLib, tracks, isLiked, downloads])
 
-  // Search logic (debounced 350ms)
+  // Multi-tier Search logic (debounced 350ms): YouTube API -> Last.fm -> Curated Library
   const executeSearch = useCallback(
     async (query) => {
-      const clean = query.trim()
+      const clean = query ? query.trim() : ''
       if (!clean) {
         setResults([])
         setBusy(false)
@@ -652,51 +729,99 @@ export default function ApkApp() {
       }
 
       setBusy(true)
+      const qLower = clean.toLowerCase()
+
       try {
-        // Query YouTube API
-        const key = localStorage.getItem('dhun_youtube_api_key') || ''
-        const base = import.meta.env.DEV ? '/api/youtube' : 'https://www.googleapis.com/youtube/v3'
-        const resp = await fetch(
-          `${base}/search?part=snippet&maxResults=15&q=${encodeURIComponent(clean)}&type=video`,
-          {
-            headers: key ? { 'X-Goog-Api-Key': key } : {}
-          }
-        )
+        // Tier 1: YouTube Data API v3 with bundled key
+        const key = getYoutubeApiKey()
+        const base = import.meta.env.DEV ? '/api/youtube' : YOUTUBE_API_BASE
+        const url = `${base}/search?part=snippet&maxResults=25&q=${encodeURIComponent(clean)}&type=video&videoEmbeddable=true&key=${encodeURIComponent(key)}`
+        const resp = await fetch(url, {
+          headers: { 'X-Goog-Api-Key': key }
+        })
 
         if (resp.ok) {
           const data = await resp.json()
           if (data.items && data.items.length) {
-            const mapped = data.items.map((it, idx) =>
-              norm(
-                {
-                  id: it.id.videoId,
-                  title: it.snippet.title,
-                  artist: it.snippet.channelTitle,
-                  thumbnail: it.snippet.thumbnails?.high?.url || it.snippet.thumbnails?.medium?.url,
-                  d: 215
-                },
-                idx
+            const mapped = data.items
+              .filter((it) => it.id && it.id.videoId)
+              .map((it, idx) =>
+                norm(
+                  {
+                    id: it.id.videoId,
+                    title: decodeHtml(it.snippet.title),
+                    artist: decodeHtml(it.snippet.channelTitle),
+                    album: 'YouTube Music',
+                    thumbnail:
+                      it.snippet.thumbnails?.high?.url ||
+                      it.snippet.thumbnails?.medium?.url ||
+                      it.snippet.thumbnails?.default?.url,
+                    d: 215
+                  },
+                  idx
+                )
               )
-            )
-            setResults(mapped)
-            setBusy(false)
-            return
+            if (mapped.length > 0) {
+              setResults(mapped)
+              setBusy(false)
+              return
+            }
           }
         }
-
-        // Fallback to local match
-        const matches = tracks.filter((x) =>
-          (x.title + ' ' + x.artist + ' ' + x.album).toLowerCase().includes(clean.toLowerCase())
-        )
-        setResults(matches)
-      } catch {
-        const fallback = tracks.filter((x) =>
-          (x.title + ' ' + x.artist).toLowerCase().includes(clean.toLowerCase())
-        )
-        setResults(fallback)
-      } finally {
-        setBusy(false)
+      } catch (err) {
+        console.warn('YouTube search API error:', err)
       }
+
+      // Tier 2: Last.fm catalog search fallback
+      try {
+        const lastFmMatches = await searchLastFmTracks(clean, 15)
+        if (lastFmMatches && lastFmMatches.length > 0) {
+          const mapped = lastFmMatches.map((m, idx) =>
+            norm(
+              {
+                id: `lastfm-${idx}-${encodeURIComponent(m.title)}`,
+                searchQuery: `${m.title} ${m.artist}`,
+                title: m.title,
+                artist: m.artist,
+                album: 'Last.fm Music',
+                thumbnail: m.img,
+                d: 210
+              },
+              idx
+            )
+          )
+          setResults(mapped)
+          setBusy(false)
+          return
+        }
+      } catch (err) {
+        console.warn('Last.fm fallback error:', err)
+      }
+
+      // Tier 3: Curated Playlists & Local Library Search
+      const curatedPool = []
+      DEFAULT_CURATED_PLAYLISTS.forEach((pl) => {
+        pl.songs.forEach((s) => {
+          curatedPool.push(norm({ ...s, album: pl.name }))
+        })
+      })
+      const fullCatalog = [...tracks, ...curatedPool]
+      const seen = new Set()
+      const deduped = []
+      for (const t of fullCatalog) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id)
+          deduped.push(t)
+        }
+      }
+
+      const tokens = qLower.split(/\s+/).filter(Boolean)
+      const matches = deduped.filter((x) => {
+        const hay = (x.title + ' ' + x.artist + ' ' + (x.album || '')).toLowerCase()
+        return tokens.length > 0 && tokens.every((token) => hay.includes(token))
+      })
+      setResults(matches)
+      setBusy(false)
     },
     [tracks]
   )
@@ -1902,6 +2027,41 @@ export default function ApkApp() {
                   className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white transition active:scale-95"
                 >
                   Test Last.fm API Connection
+                </button>
+              </div>
+
+              {/* YouTube Music Backend Engine Card */}
+              <div className="mt-4 p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-mute">
+                    YouTube Catalog Integration
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-mint/20 text-mint">
+                    {localStorage.getItem('dhun_youtube_api_key') ? 'Custom Key' : 'Bundled API Key'}
+                  </span>
+                </div>
+                <div className="text-xs text-white/80 space-y-1">
+                  <p><span className="text-mute">Status:</span> Active (YouTube Data API v3)</p>
+                  <p><span className="text-mute">Current Key:</span> {getYoutubeApiKey().slice(0, 10)}…{getYoutubeApiKey().slice(-4)}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    vibrate(8)
+                    const curKey = localStorage.getItem('dhun_youtube_api_key') || ''
+                    const input = prompt('Enter custom YouTube Data API Key (leave empty to use bundled key):', curKey)
+                    if (input !== null) {
+                      if (input.trim()) {
+                        localStorage.setItem('dhun_youtube_api_key', input.trim())
+                        showToast('Custom YouTube API key saved')
+                      } else {
+                        localStorage.removeItem('dhun_youtube_api_key')
+                        showToast('Reverted to bundled YouTube API key')
+                      }
+                    }
+                  }}
+                  className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white transition active:scale-95"
+                >
+                  Configure Custom YouTube Key
                 </button>
               </div>
 
