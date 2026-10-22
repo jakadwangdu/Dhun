@@ -1,5 +1,7 @@
 // Background Audio & Media Session Engine for Dhun
 
+import { Capacitor, registerPlugin } from '@capacitor/core'
+
 let silentAudioEl = null
 let isInitialized = false
 
@@ -32,7 +34,7 @@ export function initBackgroundAudioShield() {
         get: () => 'visible',
         configurable: true
       })
-    } catch (e) {
+    } catch {
       // Ignore if browser prevents redefining
     }
   } catch (err) {
@@ -40,11 +42,10 @@ export function initBackgroundAudioShield() {
   }
 }
 
-import { Capacitor, registerPlugin } from '@capacitor/core'
-
-const NativeBackgroundAudio = typeof window !== 'undefined' && Capacitor.isNativePlatform()
-  ? registerPlugin('BackgroundAudio')
-  : null
+const NativeBackgroundAudio =
+  typeof window !== 'undefined' && Capacitor.isNativePlatform()
+    ? registerPlugin('BackgroundAudio')
+    : null
 
 /**
  * Anchors Android OS Audio Focus and triggers Native Foreground Service + Partial WakeLock
@@ -59,8 +60,10 @@ export function startAudioKeeper(track = null) {
       NativeBackgroundAudio.startBackgroundPlayback({
         title: track?.title || 'Dhun Audio',
         artist: track?.artist || 'Dhun High Fidelity'
-      }).catch((e) => console.warn('Native background audio start err:', e))
-    } catch (e) {}
+      }).catch((err) => console.warn('Native background audio start err:', err))
+    } catch {
+      // Ignore native plugin failure on web
+    }
   }
 
   try {
@@ -79,7 +82,9 @@ export function startAudioKeeper(track = null) {
     if (silentAudioEl.paused) {
       silentAudioEl.play().catch(() => {})
     }
-  } catch (e) {}
+  } catch {
+    // Ignore audio context error
+  }
 }
 
 export function pauseAudioKeeper() {
@@ -87,13 +92,17 @@ export function pauseAudioKeeper() {
   if (NativeBackgroundAudio) {
     try {
       NativeBackgroundAudio.stopBackgroundPlayback().catch(() => {})
-    } catch (e) {}
+    } catch {
+      // Ignore native plugin failure on web
+    }
   }
 
   if (silentAudioEl && !silentAudioEl.paused) {
     try {
       silentAudioEl.pause()
-    } catch (e) {}
+    } catch {
+      // Ignore pause error
+    }
   }
 }
 

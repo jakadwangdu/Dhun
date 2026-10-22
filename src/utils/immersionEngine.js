@@ -27,7 +27,9 @@ function stopCurrentNodes() {
     try {
       if (node.stop) node.stop()
       if (node.disconnect) node.disconnect()
-    } catch (e) {}
+    } catch {
+      // Ignore node disconnection error
+    }
   })
   activeNodes = []
 }
@@ -174,7 +176,7 @@ export const immersionEngine = {
     if (masterGain && audioCtx) {
       try {
         masterGain.gain.setTargetAtTime(currentVolume, audioCtx.currentTime, 0.05)
-      } catch (e) {
+      } catch {
         masterGain.gain.setValueAtTime(currentVolume, audioCtx.currentTime)
       }
     }
@@ -194,7 +196,9 @@ export const immersionEngine = {
     if (audioCtx) {
       try {
         audioCtx.close()
-      } catch (e) {}
+      } catch {
+      // Ignore node disconnection error
+    }
       audioCtx = null
       masterGain = null
     }

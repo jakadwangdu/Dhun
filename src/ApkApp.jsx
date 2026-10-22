@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import './App.css'
 import { Icon } from './components/Icons'
 import { playbackEngine } from './utils/audioEngine'
@@ -11,7 +11,7 @@ import {
   getStorageUsageEstimate,
   requestPersistentStorage
 } from './utils/downloadManager'
-import { fetchLastFmTrackInfo, fetchLastFmTopTracks } from './utils/lastFmApi'
+import { fetchLastFmTrackInfo } from './utils/lastFmApi'
 import { DEFAULT_CURATED_PLAYLISTS } from './data/defaultPlaylists'
 import { initBackgroundAudioShield, startAudioKeeper, pauseAudioKeeper } from './utils/backgroundAudio'
 
@@ -45,6 +45,22 @@ function norm(x, i = 0) {
   return { id, title, artist, album, year, songs, d, img, src, h }
 }
 
+function enforceHighestQuality(player) {
+  if (!player) return
+  try {
+    const available = typeof player.getAvailableQualityLevels === 'function' ? player.getAvailableQualityLevels() : []
+    const hierarchy = ['highres', 'hd1440', 'hd1080', 'hd720', 'large', 'medium']
+    for (const q of hierarchy) {
+      if (available.includes(q)) {
+        player.setPlaybackQuality(q)
+        break
+      }
+    }
+  } catch {
+    // Ignore quality level error
+  }
+}
+
 export default function ApkApp() {
   // Body class hook for standalone mobile APK display
   useEffect(() => {
@@ -60,19 +76,12 @@ export default function ApkApp() {
   const [chipLib, setChipLib] = useState('All') // 'All' | 'Playlists' | 'Liked Songs' | 'Downloads'
   const [playerOpen, setPlayerOpen] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
-  const [introDismissed, setIntroDismissed] = useState(() => {
-    try {
-      return sessionStorage.getItem('dhun_apk_intro_seen') === 'true'
-    } catch (e) {
-      return true
-    }
-  })
 
   // User Profile
   const [userName, setUserName] = useState(() => {
     try {
       return localStorage.getItem('dhun_user_name') || 'Dhun Listener'
-    } catch (e) {
+    } catch {
       return 'Dhun Listener'
     }
   })
@@ -106,7 +115,7 @@ export default function ApkApp() {
     try {
       const raw = localStorage.getItem('dhun-liked')
       return raw ? JSON.parse(raw) : []
-    } catch (e) {
+    } catch {
       return []
     }
   })
@@ -132,13 +141,16 @@ export default function ApkApp() {
 
   // Refs for audio engine
   const tracksRef = useRef(tracks)
-  tracksRef.current = tracks
   const curRef = useRef(cur)
-  curRef.current = cur
   const shuffleRef = useRef(shuffle)
-  shuffleRef.current = shuffle
   const repeatModeRef = useRef(repeatMode)
-  repeatModeRef.current = repeatMode
+
+  useEffect(() => {
+    tracksRef.current = tracks
+    curRef.current = cur
+    shuffleRef.current = shuffle
+    repeatModeRef.current = repeatMode
+  }, [tracks, cur, shuffle, repeatMode])
 
   // Current track
   const currentTrack = useMemo(() => {
@@ -158,7 +170,9 @@ export default function ApkApp() {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(8)
       }
-    } catch (e) {}
+    } catch {
+      // Ignore vibration error
+    }
   }
 
   // Last.fm Metadata Enrichment
@@ -184,14 +198,16 @@ export default function ApkApp() {
             })
           )
         }
-      } catch (err) {}
+      } catch {
+        // Ignore Last.fm enrichment failure
+      }
     }
 
     enrichMetadata()
     return () => {
       isCancelled = true
     }
-  }, [currentTrack?.title, currentTrack?.artist])
+  }, [currentTrack])
 
   // Sync storage estimate
   const refreshStorage = useCallback(async () => {
@@ -204,6 +220,41 @@ export default function ApkApp() {
     refreshStorage()
     requestPersistentStorage()
   }, [refreshStorage])
+
+  const handleNextTrack = useCallback(() => {
+    const list = tracksRef.current
+    if (!list.length) return
+    const mode = repeatModeRef.current
+
+    if (mode === 'one') {
+      playbackEngine.seekTo(0)
+      playbackEngine.resume()
+      return
+    }
+
+    const nextIndex = shuffleRef.current
+      ? Math.floor(Math.random() * list.length)
+      : (curRef.current + 1) % list.length
+
+    setCur(nextIndex)
+    playbackEngine.playTrack(list[nextIndex])
+    setPlaying(true)
+  }, [])
+
+  const handlePrevTrack = useCallback(() => {
+    const list = tracksRef.current
+    if (!list.length) return
+
+    if (pos > 3) {
+      playbackEngine.seekTo(0)
+      return
+    }
+
+    const prevIndex = (curRef.current - 1 + list.length) % list.length
+    setCur(prevIndex)
+    playbackEngine.playTrack(list[prevIndex])
+    setPlaying(true)
+  }, [pos])
 
   // Playback Engine Event Subscriptions
   useEffect(() => {
@@ -222,7 +273,7 @@ export default function ApkApp() {
       }
     })
     return () => unsubscribe()
-  }, [])
+  }, [handleNextTrack, handlePrevTrack])
 
   // Setup YouTube IFrame Player with highest quality preference
   useEffect(() => {
@@ -243,7 +294,7 @@ export default function ApkApp() {
       if (!container || window.dhunApkYTPlayerInstance) return
 
       try {
-        const player = new window.YT.Player('youtube-player-container-apk', {
+        new window.YT.Player('youtube-player-container-apk', {
           height: '100',
           width: '100',
           playerVars: {
@@ -263,6 +314,7 @@ export default function ApkApp() {
               if (event.data === window.YT.PlayerState.PLAYING) {
                 setPlaying(true)
                 playbackEngine.isPlaying = true
+                enforceHighestQuality(event.target)
                 startAudioKeeper(tracksRef.current[curRef.current])
               } else if (event.data === window.YT.PlayerState.PAUSED) {
                 setPlaying(false)
@@ -280,7 +332,42 @@ export default function ApkApp() {
     }
 
     initYT()
-  }, [])
+  }, [handleNextTrack])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+      if (e.code === 'Space') {
+        e.preventDefault()
+        vibrate()
+        playbackEngine.toggle()
+      } else if (e.code === 'ArrowRight' && !e.shiftKey) {
+        e.preventDefault()
+        playbackEngine.seekTo(Math.min(pos + 5, currentTrack.d || 300))
+      } else if (e.code === 'ArrowLeft' && !e.shiftKey) {
+        e.preventDefault()
+        playbackEngine.seekTo(Math.max(pos - 5, 0))
+      } else if (e.code === 'ArrowRight' && e.shiftKey) {
+        e.preventDefault()
+        vibrate()
+        handleNextTrack()
+      } else if (e.code === 'ArrowLeft' && e.shiftKey) {
+        e.preventDefault()
+        vibrate()
+        handlePrevTrack()
+      } else if (e.code === 'Escape') {
+        if (playerOpen) {
+          vibrate()
+          setPlayerOpen(false)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [pos, currentTrack, playerOpen, handleNextTrack, handlePrevTrack])
 
   // Play a track by index or track object
   const playTrackAt = useCallback(
@@ -337,44 +424,6 @@ export default function ApkApp() {
     [cur, tracks, playTrackAt]
   )
 
-  const handleNextTrack = useCallback(() => {
-    const list = tracksRef.current
-    if (!list.length) return
-    const mode = repeatModeRef.current
-
-    if (mode === 'one') {
-      playbackEngine.seekTo(0)
-      playbackEngine.resume()
-      return
-    }
-
-    let nextIndex = 0
-    if (shuffleRef.current) {
-      nextIndex = Math.floor(Math.random() * list.length)
-    } else {
-      nextIndex = (curRef.current + 1) % list.length
-    }
-
-    setCur(nextIndex)
-    playbackEngine.playTrack(list[nextIndex])
-    setPlaying(true)
-  }, [])
-
-  const handlePrevTrack = useCallback(() => {
-    const list = tracksRef.current
-    if (!list.length) return
-
-    if (pos > 3) {
-      playbackEngine.seekTo(0)
-      return
-    }
-
-    const prevIndex = (curRef.current - 1 + list.length) % list.length
-    setCur(prevIndex)
-    playbackEngine.playTrack(list[prevIndex])
-    setPlaying(true)
-  }, [pos])
-
   // Like Toggle
   const isLiked = useCallback(
     (track) => {
@@ -392,7 +441,9 @@ export default function ApkApp() {
         const next = prev.includes(track.id) ? prev.filter((id) => id !== track.id) : [...prev, track.id]
         try {
           localStorage.setItem('dhun-liked', JSON.stringify(next))
-        } catch (e) {}
+        } catch {
+          // Ignore storage error
+        }
         showToast(next.includes(track.id) ? 'Added to Liked Songs' : 'Removed from Liked Songs')
         return next
       })
@@ -554,7 +605,7 @@ export default function ApkApp() {
           (x.title + ' ' + x.artist + ' ' + x.album).toLowerCase().includes(clean.toLowerCase())
         )
         setResults(matches)
-      } catch (err) {
+      } catch {
         const fallback = tracks.filter((x) =>
           (x.title + ' ' + x.artist).toLowerCase().includes(clean.toLowerCase())
         )
@@ -652,7 +703,9 @@ export default function ApkApp() {
                     setUserName(name.trim())
                     try {
                       localStorage.setItem('dhun_user_name', name.trim())
-                    } catch (e) {}
+                    } catch {
+                      // Ignore storage error
+                    }
                   }
                 }}
                 className="grid h-11 w-11 place-items-center rounded-full bg-lime text-lg font-extrabold text-ink transition active:scale-95"

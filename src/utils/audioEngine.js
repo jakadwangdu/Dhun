@@ -10,12 +10,14 @@ class PlaybackEngine {
     this.audio = typeof Audio !== 'undefined' ? new Audio() : null
     this.ytPlayer = null
     this.ytReady = false
+    this.pendingTrack = null
     this.currentTrack = null
     this.isPlaying = false
     this.currentTime = 0
     this.duration = 0
     this.listeners = new Set()
     this.activeSourceType = null // 'audio' | 'youtube' | null
+    this.progressTimer = null
 
     if (this.audio) {
       this.audio.preload = 'auto'
@@ -51,8 +53,8 @@ class PlaybackEngine {
         this.notify('ended')
       })
 
-      this.audio.addEventListener('error', (e) => {
-        console.warn('HTMLAudio error:', e)
+      this.audio.addEventListener('error', (err) => {
+        console.warn('HTMLAudio error:', err)
         this.notify('error', 'Audio playback error')
       })
     }
@@ -61,6 +63,38 @@ class PlaybackEngine {
   setYouTubePlayer(player) {
     this.ytPlayer = player
     this.ytReady = true
+    if (this.pendingTrack) {
+      const t = this.pendingTrack
+      this.pendingTrack = null
+      this.playTrack(t)
+    }
+  }
+
+  startProgressTimer() {
+    this.stopProgressTimer()
+    this.progressTimer = setInterval(() => {
+      if (this.activeSourceType === 'youtube' && this.ytPlayer && this.isPlaying) {
+        try {
+          if (typeof this.ytPlayer.getCurrentTime === 'function') {
+            this.currentTime = this.ytPlayer.getCurrentTime() || 0
+          }
+          if (typeof this.ytPlayer.getDuration === 'function') {
+            const d = this.ytPlayer.getDuration()
+            if (d && !isNaN(d)) this.duration = d
+          }
+          this.notify('time', { current: this.currentTime, duration: this.duration })
+        } catch {
+          // Player method temporarily unavailable
+        }
+      }
+    }, 250)
+  }
+
+  stopProgressTimer() {
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer)
+      this.progressTimer = null
+    }
   }
 
   subscribe(listener) {
@@ -72,8 +106,8 @@ class PlaybackEngine {
     this.listeners.forEach((fn) => {
       try {
         fn(event, data)
-      } catch (e) {
-        console.error('Error in playback engine listener:', e)
+      } catch (err) {
+        console.error('Error in playback engine listener:', err)
       }
     })
   }
@@ -92,10 +126,15 @@ class PlaybackEngine {
     }
 
     if (audioSrc && this.audio) {
-      // Direct audio source available -> Use HTMLAudioElement (Full background playback supported)
+      // Direct audio source available -> Use HTMLAudioElement
       this.activeSourceType = 'audio'
+      this.stopProgressTimer()
       if (this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
-        try { this.ytPlayer.pauseVideo() } catch (e) {}
+        try {
+          this.ytPlayer.pauseVideo()
+        } catch {
+          // Ignore
+        }
       }
 
       this.audio.src = audioSrc
@@ -120,9 +159,13 @@ class PlaybackEngine {
           })
           this.isPlaying = true
           startAudioKeeper(track)
+          this.startProgressTimer()
         } catch (err) {
           console.warn('YouTube loadVideo error:', err)
         }
+      } else {
+        // Player not ready yet, queue pending track
+        this.pendingTrack = track
       }
     }
 
@@ -134,9 +177,14 @@ class PlaybackEngine {
     if (this.activeSourceType === 'audio' && this.audio) {
       this.audio.pause()
     } else if (this.activeSourceType === 'youtube' && this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
-      try { this.ytPlayer.pauseVideo() } catch (e) {}
+      try {
+        this.ytPlayer.pauseVideo()
+      } catch {
+        // Ignore
+      }
     }
     this.isPlaying = false
+    this.stopProgressTimer()
     pauseAudioKeeper()
     this.syncMediaSession()
     this.notify('playState', false)
@@ -146,7 +194,12 @@ class PlaybackEngine {
     if (this.activeSourceType === 'audio' && this.audio) {
       this.audio.play().catch(() => {})
     } else if (this.activeSourceType === 'youtube' && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
-      try { this.ytPlayer.playVideo() } catch (e) {}
+      try {
+        this.ytPlayer.playVideo()
+        this.startProgressTimer()
+      } catch {
+        // Ignore
+      }
     }
     this.isPlaying = true
     startAudioKeeper(this.currentTrack)
@@ -167,7 +220,11 @@ class PlaybackEngine {
     if (this.activeSourceType === 'audio' && this.audio) {
       this.audio.currentTime = seconds
     } else if (this.activeSourceType === 'youtube' && this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
-      try { this.ytPlayer.seekTo(seconds, true) } catch (e) {}
+      try {
+        this.ytPlayer.seekTo(seconds, true)
+      } catch {
+        // Ignore
+      }
     }
     this.notify('time', { current: this.currentTime, duration: this.duration })
   }

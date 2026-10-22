@@ -37,7 +37,6 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request
-  const url = new URL(req.url)
 
   // Handle Range requests for audio
   if (req.headers.has('range')) {

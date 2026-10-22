@@ -7,8 +7,7 @@ export const getDownloadedTracks = () => {
   try {
     const raw = localStorage.getItem(META_KEY)
     return raw ? JSON.parse(raw) : []
-  } catch (e) {
-    console.warn('Failed to parse downloaded tracks metadata:', e)
+  } catch {
     return []
   }
 }
@@ -23,7 +22,7 @@ export const requestPersistentStorage = async () => {
   if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
     try {
       return await navigator.storage.persist()
-    } catch (e) {
+    } catch {
       return false
     }
   }
@@ -40,7 +39,7 @@ export const getStorageUsageEstimate = async () => {
         usageMB: ((usage || 0) / (1024 * 1024)).toFixed(1),
         quotaMB: ((quota || 0) / (1024 * 1024)).toFixed(1)
       }
-    } catch (e) {
+    } catch {
       return null
     }
   }
@@ -127,8 +126,7 @@ export const getOfflineAudioBlobUrl = async (track) => {
     if (!match) return null
     const blob = await match.blob()
     return URL.createObjectURL(blob)
-  } catch (e) {
-    console.warn('Error reading offline cached audio:', e)
+  } catch {
     return null
   }
 }
@@ -142,7 +140,9 @@ export const removeDownloadedTrack = async (trackId) => {
     try {
       const cache = await caches.open(CACHE_NAME)
       await cache.delete(target.src)
-    } catch (e) {}
+    } catch {
+      // Ignore cache deletion error
+    }
   }
 
   const updated = list.filter((t) => String(t.id) !== String(trackId))
@@ -154,7 +154,9 @@ export const removeAllDownloads = async () => {
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
       await caches.delete(CACHE_NAME)
-    } catch (e) {}
+    } catch {
+      // Ignore cache deletion error
+    }
   }
   localStorage.removeItem(META_KEY)
   return true

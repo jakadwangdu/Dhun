@@ -1,4 +1,3 @@
-import React from 'react'
 import { Capacitor } from '@capacitor/core'
 import WebApp from './WebApp'
 import ApkApp from './ApkApp'

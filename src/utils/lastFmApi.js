@@ -2,12 +2,12 @@
 // Supports track search, top charts, high-res album covers, and metadata enrichment.
 
 const LASTFM_API_BASE = 'https://ws.audioscrobbler.com/2.0/'
-const DEFAULT_LASTFM_KEY = '264b638f382a5d2077983ea1c9444b0e' // Standard client key
+const DEFAULT_LASTFM_KEY = import.meta.env.VITE_LASTFM_API_KEY || '264b638f382a5d2077983ea1c9444b0e' // Standard client key
 
 export const getLastFmKey = () => {
   try {
     return localStorage.getItem('dhun_lastfm_api_key') || DEFAULT_LASTFM_KEY
-  } catch (e) {
+  } catch {
     return DEFAULT_LASTFM_KEY
   }
 }
@@ -95,7 +95,7 @@ export async function fetchLastFmTrackInfo(artist, trackTitle) {
       wiki: track.wiki?.summary || '',
       duration: track.duration ? Math.round(parseInt(track.duration, 10) / 1000) : 0
     }
-  } catch (err) {
+  } catch {
     return null
   }
 }
@@ -120,7 +120,7 @@ export async function searchLastFmTracks(query, limit = 10) {
     const data = await res.json()
     const matches = data?.results?.trackmatches?.track || []
 
-    return matches.map((m, idx) => {
+    return matches.map((m) => {
       const images = m.image || []
       const img =
         images.find((i) => i.size === 'extralarge')?.['#text'] ||
@@ -133,7 +133,7 @@ export async function searchLastFmTracks(query, limit = 10) {
         listeners: m.listeners
       }
     })
-  } catch (err) {
+  } catch {
     return []
   }
 }
