@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import './App.css'
 import { Icon } from './components/Icons'
+import { NowPlayingView } from './components/NowPlayingView'
 import { playbackEngine } from './utils/audioEngine'
 import {
   getDownloadedTracks,
@@ -1529,283 +1530,59 @@ export default function ApkApp() {
         </nav>
 
         {/* ===================== FULLSCREEN NOW PLAYING SHEET ===================== */}
-        <section
-          className={`absolute inset-0 z-30 overflow-hidden bg-ink transition-sheet ${
-            playerOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
-          }`}
-          style={{
-            transform: playerOpen ? `translateY(${sheetDragY}px)` : 'translateY(100%)'
+        <NowPlayingView
+          playerOpen={playerOpen}
+          currentTrack={currentTrack}
+          playing={playing}
+          pos={pos}
+          trackDuration={trackDuration}
+          repeatMode={repeatMode}
+          shuffle={shuffle}
+          isLiked={isLiked}
+          isTrackDownloaded={isTrackDownloaded}
+          downloadProgress={downloadProgress}
+          userSettings={userSettings}
+          queueOpen={queueOpen}
+          tracks={tracks}
+          cur={cur}
+          onClose={() => {
+            vibrate()
+            setPlayerOpen(false)
           }}
-          onTouchStart={handleSheetTouchStart}
-          onTouchMove={handleSheetTouchMove}
-          onTouchEnd={handleSheetTouchEnd}
-          aria-label="Now playing"
-        >
-          {/* Zooming / breathing backdrop cover with Dynamic Ambiance */}
-          <div
-            className={`absolute inset-0 transition-all duration-700 ${playing ? 'breathe-zoom' : 'scale-110'}`}
-            style={getCoverArtStyle(currentTrack)}
-          />
-          <div
-            className="ambiance-mesh absolute inset-0 opacity-60 pointer-events-none transition-all duration-1000"
-            style={{ background: ambianceStyle.meshGradient }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/95" />
-
-          {/* Grabber for swipe down gesture */}
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 h-1.5 w-12 rounded-full bg-white/40" />
-
-          {/* Close button at top-left */}
-          <button
-            onClick={() => {
-              vibrate()
-              setPlayerOpen(false)
-            }}
-            className="absolute left-5 grid h-11 w-11 place-items-center rounded-full bg-black/50 backdrop-blur-md text-white transition active:scale-90"
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
-            aria-label="Close player"
-          >
-            <Icon name="back" size={20} />
-          </button>
-
-          {/* Up Next Queue button at top-right */}
-          <button
-            onClick={() => {
-              vibrate()
-              setQueueOpen(!queueOpen)
-            }}
-            className={`absolute right-5 grid h-11 w-11 place-items-center rounded-full backdrop-blur-md text-white transition active:scale-90 ${
-              queueOpen ? 'bg-mint text-ink' : 'bg-black/50'
-            }`}
-            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
-            aria-label="Up next queue"
-          >
-            <Icon name="queue" size={20} />
-          </button>
-
-          {/* Up Next Drawer */}
-          {queueOpen && (
-            <div
-              className="absolute inset-x-4 z-40 rounded-[28px] glass p-5 max-h-[50vh] overflow-y-auto noscroll animate-fade-in"
-              style={{ top: 'calc(env(safe-area-inset-top, 0px) + 70px)' }}
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <h3 className="font-bold text-lg">Up Next</h3>
-                <span className="text-xs text-mute">{tracks.length} tracks</span>
-              </div>
-              <ul className="mt-3 space-y-2.5">
-                {tracks.map((t, idx) => (
-                  <li
-                    key={t.id + '-' + idx}
-                    onClick={() => {
-                      playTrackAt(idx)
-                      setQueueOpen(false)
-                    }}
-                    className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition ${
-                      idx === cur ? 'bg-white/15 text-mint font-semibold' : 'hover:bg-white/5 text-white/90'
-                    }`}
-                  >
-                    <div className="h-10 w-10 shrink-0 rounded-lg" style={getCoverArtStyle(t)} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{t.title}</p>
-                      <p className="truncate text-xs text-mute">{t.artist}</p>
-                    </div>
-                    {idx === cur && playing && (
-                      <span className="h-2 w-2 rounded-full bg-mint animate-pulse" />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Central Hero Artwork with Touch Swipe Next/Prev */}
-          <div
-            className="absolute inset-x-8 flex items-center justify-center pointer-events-auto"
-            style={{
-              top: 'calc(env(safe-area-inset-top, 0px) + 72px)',
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 265px)'
-            }}
-            onTouchStart={handleArtTouchStart}
-            onTouchMove={handleArtTouchMove}
-            onTouchEnd={handleArtTouchEnd}
-          >
-            <div
-              className="relative aspect-square max-h-full max-w-[300px] w-full rounded-[28px] overflow-hidden transition-transform duration-200"
-              style={{
-                transform: `translateX(${artSwipeOffset}px) scale(${1 - Math.abs(artSwipeOffset) * 0.002}) rotate(${artSwipeOffset * 0.04}deg)`,
-                boxShadow: ambianceStyle.shadowGlow || '0 20px 50px rgba(0,0,0,0.8)'
-              }}
-            >
-              <div
-                className={`w-full h-full ${playing ? 'playing-pulse' : ''}`}
-                style={getCoverArtStyle(currentTrack)}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
-
-              {/* Swipe directional cues */}
-              {artSwipeOffset < -15 && (
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-mint backdrop-blur-md animate-pulse">
-                  <span>Next</span>
-                  <Icon name="next" size={14} />
-                </div>
-              )}
-              {artSwipeOffset > 15 && (
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-mint backdrop-blur-md animate-pulse">
-                  <Icon name="prev" size={14} />
-                  <span>Prev</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Player Bottom Card and Controls */}
-          <div
-            className="absolute inset-x-4 bottom-0 space-y-3"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
-          >
-            {/* Glass info card with Waveform */}
-            <div className="glass rounded-[28px] p-5 shadow-2xl">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0 flex-1 pr-3">
-                  <h2 className="truncate text-[26px] font-semibold leading-tight text-white">
-                    {currentTrack.title}
-                  </h2>
-                  <p className="text-sm text-white/70 mt-0.5">{currentTrack.artist}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => handleDownload(currentTrack)}
-                    className="grid h-10 w-10 place-items-center text-white/80 hover:text-white transition active:scale-90"
-                    aria-label="Download offline"
-                  >
-                    {downloadProgress[currentTrack.id] ? (
-                      <span className="text-xs font-bold text-mint">{downloadProgress[currentTrack.id]}%</span>
-                    ) : (
-                      <Icon
-                        name={isTrackDownloaded(currentTrack.id) ? 'check' : 'download'}
-                        size={20}
-                        className={isTrackDownloaded(currentTrack.id) ? 'text-mint' : ''}
-                      />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => toggleLike(currentTrack)}
-                    className={`grid h-10 w-10 place-items-center transition active:scale-90 ${
-                      isLiked(currentTrack) ? 'text-mint' : 'text-white/80'
-                    }`}
-                    aria-label="Like"
-                  >
-                    <Icon name="heart" size={22} fill={isLiked(currentTrack)} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Clickable 44-bar Waveform Scrubber */}
-              <div
-                className="mt-5 flex h-14 cursor-pointer items-center gap-[3px]"
-                onClick={handleWaveSeek}
-                role="slider"
-                aria-label="Seek track"
-                aria-valuenow={Math.round(pos)}
-                aria-valuemax={currentTrack.d || trackDuration || 210}
-              >
-                {waveBars.map((height, i) => {
-                  const maxD = currentTrack.d || trackDuration || 210
-                  const progressRatio = pos / (maxD || 1)
-                  const barRatio = i / waveBars.length
-                  const isPlayed = barRatio <= progressRatio
-
-                  return (
-                    <span
-                      key={i}
-                      className="bar flex-1 rounded-full transition-all duration-150"
-                      style={{
-                        height: `${height}px`,
-                        maxWidth: '4px',
-                        background: isPlayed ? (ambianceData.primary || '#00FF66') : 'rgba(255,255,255,0.25)'
-                      }}
-                    />
-                  )
-                })}
-              </div>
-
-              {/* Album info & Timestamp */}
-              <div className="mt-3 flex justify-between text-xs text-white/75 font-medium">
-                <span>{currentTrack.album} · {currentTrack.year}</span>
-                <span>
-                  {formatTime(pos)} / {formatTime(currentTrack.d || trackDuration || 210)}
-                </span>
-              </div>
-            </div>
-
-            {/* Glass Transport Bar */}
-            <div className="glass flex items-center justify-between rounded-[32px] p-3 shadow-2xl">
-              <button
-                onClick={() => {
-                  vibrate(10)
-                  setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'))
-                }}
-                className={`grid h-12 w-12 place-items-center rounded-full text-xs font-bold transition active:scale-90 ${
-                  repeatMode !== 'off' ? 'text-mint bg-white/10' : 'text-white/60'
-                }`}
-                aria-label="Repeat mode"
-              >
-                {repeatMode === 'one' ? '1' : '⟲'}
-              </button>
-
-              <button
-                onClick={() => {
-                  vibrate(12)
-                  handlePrevTrack()
-                }}
-                className="grid h-14 w-14 place-items-center rounded-full bg-white/10 text-white transition active:scale-90"
-                aria-label="Previous"
-              >
-                <Icon name="prev" size={20} />
-              </button>
-
-              <button
-                onClick={() => {
-                  vibrate(15)
-                  playbackEngine.toggle()
-                }}
-                className="grid h-16 w-16 place-items-center rounded-full text-ink font-extrabold shadow-xl transition active:scale-90"
-                style={{
-                  background: ambianceData.primary || '#00FF66',
-                  boxShadow: `0 8px 24px ${ambianceData.primary ? ambianceData.primary + '55' : 'rgba(0,255,102,0.35)'}`
-                }}
-                aria-label={playing ? 'Pause' : 'Play'}
-              >
-                <Icon name={playing ? 'pause' : 'play'} size={26} />
-              </button>
-
-              <button
-                onClick={() => {
-                  vibrate()
-                  handleNextTrack()
-                }}
-                className="grid h-14 w-14 place-items-center rounded-full bg-white/10 text-white transition active:scale-90"
-                aria-label="Next"
-              >
-                <Icon name="next" size={20} />
-              </button>
-
-              <button
-                onClick={() => {
-                  vibrate()
-                  setShuffle(!shuffle)
-                }}
-                className={`grid h-12 w-12 place-items-center rounded-full transition active:scale-90 ${
-                  shuffle ? 'text-lime bg-white/10' : 'text-white/60'
-                }`}
-                aria-label="Shuffle"
-              >
-                <Icon name="shuffle" size={18} />
-              </button>
-            </div>
-          </div>
-        </section>
+          onTogglePlay={() => {
+            vibrate(15)
+            playbackEngine.toggle()
+          }}
+          onNext={() => {
+            vibrate()
+            handleNextTrack()
+          }}
+          onPrev={() => {
+            vibrate(12)
+            handlePrevTrack()
+          }}
+          onSeek={(targetSeconds) => {
+            vibrate()
+            playbackEngine.seekTo(targetSeconds)
+          }}
+          onToggleLike={toggleLike}
+          onDownload={handleDownload}
+          onToggleRepeat={() => {
+            vibrate(10)
+            setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'))
+          }}
+          onToggleShuffle={() => {
+            vibrate()
+            setShuffle(!shuffle)
+          }}
+          onToggleQueue={() => {
+            vibrate()
+            setQueueOpen(!queueOpen)
+          }}
+          onPlayTrackAt={playTrackAt}
+          vibrate={vibrate}
+          getCoverArtStyle={getCoverArtStyle}
+        />
         {/* ===================== PROFILE & CUSTOMIZATION STUDIO MODAL ===================== */}
         {profileOpen && (
           <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/75 backdrop-blur-md animate-fade-in">
